@@ -1,98 +1,83 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useLocationTracking } from '@/hooks/use-location-tracking';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function TrackingScreen() {
+  const { latitude, longitude, speed, permissionDenied, error, refreshing, refresh } = useLocationTracking();
 
-export default function HomeScreen() {
+  const speedKmh = speed != null && speed >= 0 ? (speed * 3.6).toFixed(1) : null;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Tracking</Text>
+        <TouchableOpacity
+          style={[styles.refreshBtn, refreshing && styles.refreshBtnDisabled]}
+          onPress={refresh}
+          disabled={refreshing}
+          accessibilityLabel="Refresh location"
+          accessibilityRole="button"
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.refreshIcon}>↻</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {permissionDenied && (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningText}>
+            Location permission is required for tracking. Please enable it in your device settings.
+          </Text>
+        </View>
+      )}
+
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {!permissionDenied && !error && latitude === null && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Waiting for GPS...</Text>
+        </View>
+      )}
+
+      {latitude !== null && longitude !== null && (
+        <View style={styles.coordsContainer}>
+          <Text style={styles.label}>Latitude</Text>
+          <Text style={styles.value}>{latitude.toFixed(6)}</Text>
+          <Text style={styles.label}>Longitude</Text>
+          <Text style={styles.value}>{longitude.toFixed(6)}</Text>
+          {speedKmh && (
+            <>
+              <Text style={styles.label}>Speed</Text>
+              <Text style={styles.value}>{speedKmh} km/h</Text>
+            </>
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  container: { flex: 1, padding: 24, paddingTop: 60, backgroundColor: '#fff' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  title: { fontSize: 28, fontWeight: 'bold' },
+  refreshBtn: { backgroundColor: '#007AFF', width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  refreshBtnDisabled: { opacity: 0.6 },
+  refreshIcon: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  warningBox: { backgroundColor: '#FFF3CD', borderRadius: 8, padding: 16, marginBottom: 16 },
+  warningText: { color: '#856404', fontSize: 15 },
+  errorBox: { backgroundColor: '#F8D7DA', borderRadius: 8, padding: 16, marginBottom: 16 },
+  errorText: { color: '#721C24', fontSize: 15 },
+  loadingContainer: { alignItems: 'center', marginTop: 40, gap: 12 },
+  loadingText: { fontSize: 16, color: '#666' },
+  coordsContainer: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 20 },
+  label: { fontSize: 14, color: '#666', marginTop: 8 },
+  value: { fontSize: 22, fontWeight: '600', color: '#333' },
 });

@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow GPS Tracker to use your location while using the app.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow GPS Tracker to use your location for continuous tracking.",
+        "NSLocationAlwaysUsageDescription": "Allow GPS Tracker to use your location in the background.",
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -37,6 +43,18 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      "expo-secure-store",
+      "expo-task-manager",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow GPS Tracker to use your location for tracking.",
+          "locationAlwaysPermission": "Allow GPS Tracker to use your location in the background for continuous tracking.",
+          "locationWhenInUsePermission": "Allow GPS Tracker to use your location while using the app.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ]
     ],
