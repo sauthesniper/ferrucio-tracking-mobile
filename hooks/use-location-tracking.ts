@@ -152,7 +152,7 @@ export function useLocationTracking(): LocationTrackingState {
               deferredUpdatesInterval: BG_INTERVAL_MS,
               showsBackgroundLocationIndicator: true,
               foregroundService: {
-                notificationTitle: 'GPS Tracker',
+                notificationTitle: 'CONI',
                 notificationBody: 'Tracking your location in real-time',
                 notificationColor: '#007AFF',
               },

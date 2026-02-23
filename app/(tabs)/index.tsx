@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useLocationTracking } from '@/hooks/use-location-tracking';
 
 export default function TrackingScreen() {
@@ -20,7 +21,9 @@ export default function TrackingScreen() {
           {refreshing ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.refreshIcon}>↻</Text>
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+              <Path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="#fff" />
+            </Svg>
           )}
         </TouchableOpacity>
       </View>
@@ -70,7 +73,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: 'bold' },
   refreshBtn: { backgroundColor: '#007AFF', width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   refreshBtnDisabled: { opacity: 0.6 },
-  refreshIcon: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   warningBox: { backgroundColor: '#FFF3CD', borderRadius: 8, padding: 16, marginBottom: 16 },
   warningText: { color: '#856404', fontSize: 15 },
   errorBox: { backgroundColor: '#F8D7DA', borderRadius: 8, padding: 16, marginBottom: 16 },

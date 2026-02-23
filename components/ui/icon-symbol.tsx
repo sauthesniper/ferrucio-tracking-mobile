@@ -20,6 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'location.fill': 'location-on',
   'gearshape.fill': 'settings',
+  'shield.fill': 'shield',
 } as IconMapping;
 
 /**

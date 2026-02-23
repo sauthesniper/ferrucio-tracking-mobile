@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "CONI",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,10 +11,12 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow GPS Tracker to use your location while using the app.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow GPS Tracker to use your location for continuous tracking.",
-        "NSLocationAlwaysUsageDescription": "Allow GPS Tracker to use your location in the background.",
-        "UIBackgroundModes": ["location"]
+        "NSLocationWhenInUseUsageDescription": "Allow CONI to use your location while using the app.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow CONI to use your location for continuous tracking.",
+        "NSLocationAlwaysUsageDescription": "Allow CONI to use your location in the background.",
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -25,7 +27,15 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "package": "com.sauthesniper.mobile"
     },
     "web": {
       "output": "static",
@@ -50,9 +60,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow GPS Tracker to use your location for tracking.",
-          "locationAlwaysPermission": "Allow GPS Tracker to use your location in the background for continuous tracking.",
-          "locationWhenInUsePermission": "Allow GPS Tracker to use your location while using the app.",
+          "locationAlwaysAndWhenInUsePermission": "Allow CONI to use your location for tracking.",
+          "locationAlwaysPermission": "Allow CONI to use your location in the background for continuous tracking.",
+          "locationWhenInUsePermission": "Allow CONI to use your location while using the app.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
@@ -61,6 +71,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ed62e91d-65f6-40db-8c1b-43785888dd01"
+      }
     }
   }
 }
