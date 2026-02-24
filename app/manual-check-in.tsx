@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '@/context/auth-context';
 import { apiGet, apiPost } from '@/services/api';
+import { useTranslation } from '@/i18n';
 
 type Mode = 'check_in' | 'check_out';
 
@@ -26,6 +27,7 @@ interface SearchResult {
 export default function ManualCheckInScreen() {
   const router = useRouter();
   const { token } = useAuth();
+  const { t } = useTranslation();
 
   const [mode, setMode] = useState<Mode>('check_in');
   const [query, setQuery] = useState('');
@@ -102,11 +104,11 @@ export default function ManualCheckInScreen() {
           token,
         );
         if (res.ok) {
-          setSuccess(`Check-in recorded for ${selectedEmployee.name}`);
+          setSuccess(t('manualCheckIn.checkInRecorded').replace('{name}', selectedEmployee.name));
           resetForm();
         } else {
           const errData = res.data as unknown as { error?: string };
-          setError(errData.error ?? 'Failed to check in');
+          setError(errData.error ?? t('manualCheckIn.failedCheckIn'));
         }
       } else {
         const body: Record<string, unknown> = {
@@ -123,16 +125,16 @@ export default function ManualCheckInScreen() {
           const h = Math.floor(mins / 60);
           const m = Math.round(mins % 60);
           setSuccess(
-            `Check-out recorded for ${selectedEmployee.name} — Duration: ${h}h ${m}m`,
+            t('manualCheckIn.checkOutRecorded').replace('{name}', selectedEmployee.name).replace('{duration}', `${h}h ${m}m`),
           );
           resetForm();
         } else {
           const errData = res.data as unknown as { error?: string };
-          setError(errData.error ?? 'Failed to check out');
+          setError(errData.error ?? t('manualCheckIn.failedCheckOut'));
         }
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('manualCheckIn.networkError'));
     } finally {
       setSubmitting(false);
     }
@@ -154,9 +156,9 @@ export default function ManualCheckInScreen() {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>{t('manualCheckIn.back')}</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Manual {mode === 'check_in' ? 'Check-In' : 'Check-Out'}</Text>
+        <Text style={styles.title}>{mode === 'check_in' ? t('manualCheckIn.title') : t('manualCheckIn.titleCheckOut')}</Text>
       </View>
 
       {/* Mode toggle */}
@@ -168,7 +170,7 @@ export default function ManualCheckInScreen() {
           accessibilityRole="button"
         >
           <Text style={[styles.modeBtnText, mode === 'check_in' && styles.modeBtnTextActive]}>
-            Check-In
+            {t('manualCheckIn.checkInMode')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -178,7 +180,7 @@ export default function ManualCheckInScreen() {
           accessibilityRole="button"
         >
           <Text style={[styles.modeBtnText, mode === 'check_out' && styles.modeBtnTextActive]}>
-            Check-Out
+            {t('manualCheckIn.checkOutMode')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -196,15 +198,15 @@ export default function ManualCheckInScreen() {
       )}
 
       {/* Search field */}
-      <Text style={styles.label}>Search Employee</Text>
+      <Text style={styles.label}>{t('manualCheckIn.searchEmployee')}</Text>
       <TextInput
         style={styles.input}
-        placeholder="Name, phone, or unique code"
+        placeholder={t('manualCheckIn.searchPlaceholder')}
         placeholderTextColor="#999"
         value={query}
         onChangeText={handleQueryChange}
         autoCapitalize="none"
-        accessibilityLabel="Search employee"
+        accessibilityLabel={t('manualCheckIn.searchEmployee')}
       />
 
       {/* Search results */}
@@ -231,7 +233,7 @@ export default function ManualCheckInScreen() {
       {/* Selected employee */}
       {selectedEmployee && (
         <View style={styles.selectedCard}>
-          <Text style={styles.selectedLabel}>Selected Employee</Text>
+          <Text style={styles.selectedLabel}>{t('manualCheckIn.selectedEmployee')}</Text>
           <Text style={styles.selectedName}>{selectedEmployee.name}</Text>
           <Text style={styles.selectedDetail}>
             {selectedEmployee.phone} · {selectedEmployee.unique_code}
@@ -250,7 +252,7 @@ export default function ManualCheckInScreen() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Svg width={16} height={16} viewBox="0 0 24 24"><Path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z" fill="#007AFF" /></Svg>
-                <Text style={styles.contactLinkText}>Contact</Text>
+                <Text style={styles.contactLinkText}>{t('manualCheckIn.contact')}</Text>
               </View>
             </TouchableOpacity>
           ) : null}
@@ -260,29 +262,29 @@ export default function ManualCheckInScreen() {
       {/* Start time (check-in only) */}
       {mode === 'check_in' && (
         <>
-          <Text style={styles.label}>Start Time (optional)</Text>
+          <Text style={styles.label}>{t('manualCheckIn.startTime')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. 2025-01-15T08:00:00"
+            placeholder={t('manualCheckIn.startTimePlaceholder')}
             placeholderTextColor="#999"
             value={startTime}
             onChangeText={setStartTime}
-            accessibilityLabel="Start time"
+            accessibilityLabel={t('manualCheckIn.startTime')}
           />
         </>
       )}
 
       {/* Reason */}
-      <Text style={styles.label}>Reason</Text>
+      <Text style={styles.label}>{t('manualCheckIn.reason')}</Text>
       <TextInput
         style={[styles.input, styles.textArea]}
-        placeholder="Reason for manual operation"
+        placeholder={t('manualCheckIn.reasonPlaceholder')}
         placeholderTextColor="#999"
         value={reason}
         onChangeText={setReason}
         multiline
         numberOfLines={3}
-        accessibilityLabel="Reason"
+        accessibilityLabel={t('manualCheckIn.reason')}
       />
 
       {/* Submit */}
@@ -290,14 +292,14 @@ export default function ManualCheckInScreen() {
         style={[styles.submitBtn, !selectedEmployee && styles.submitBtnDisabled]}
         onPress={handleSubmit}
         disabled={!selectedEmployee || submitting}
-        accessibilityLabel={mode === 'check_in' ? 'Submit check-in' : 'Submit check-out'}
+        accessibilityLabel={mode === 'check_in' ? t('manualCheckIn.submitCheckIn') : t('manualCheckIn.submitCheckOut')}
         accessibilityRole="button"
       >
         {submitting ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.submitBtnText}>
-            {mode === 'check_in' ? 'Submit Check-In' : 'Submit Check-Out'}
+            {mode === 'check_in' ? t('manualCheckIn.submitCheckIn') : t('manualCheckIn.submitCheckOut')}
           </Text>
         )}
       </TouchableOpacity>

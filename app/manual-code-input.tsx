@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
 import { apiPost } from '@/services/api';
+import { useTranslation, t } from '@/i18n';
 import {
   formatNumericCode,
   isCompleteCode,
@@ -25,6 +26,7 @@ export default function ManualCodeInputScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const { isCheckedIn, refetch } = useAttendance();
+  const { t } = useTranslation();
 
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -76,7 +78,7 @@ export default function ManualCodeInputScreen() {
         }
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('manualCode.networkError'));
       setCode('');
     } finally {
       setSubmitting(false);
@@ -95,15 +97,15 @@ export default function ManualCodeInputScreen() {
           {result.kind === 'check-in' ? (
             <>
               <Text style={styles.successIcon}>✓</Text>
-              <Text style={styles.successTitle}>Checked In</Text>
-              <Text style={styles.codeLabel}>Your Code</Text>
+              <Text style={styles.successTitle}>{t('qrScanner.checkedIn')}</Text>
+              <Text style={styles.codeLabel}>{t('qrScanner.yourCode')}</Text>
               <Text style={styles.numericCode}>{result.numericCode}</Text>
             </>
           ) : (
             <>
               <Text style={styles.successIcon}>✓</Text>
-              <Text style={styles.successTitle}>Checked Out</Text>
-              <Text style={styles.durationLabel}>Duration</Text>
+              <Text style={styles.successTitle}>{t('qrScanner.checkedOut')}</Text>
+              <Text style={styles.durationLabel}>{t('qrScanner.duration')}</Text>
               <Text style={styles.durationValue}>
                 {formatDuration(result.durationMinutes)}
               </Text>
@@ -112,10 +114,10 @@ export default function ManualCodeInputScreen() {
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={handleBack}
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('qrScanner.backToDashboard')}
             accessibilityRole="button"
           >
-            <Text style={styles.primaryBtnText}>Back to Dashboard</Text>
+            <Text style={styles.primaryBtnText}>{t('qrScanner.backToDashboard')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -127,11 +129,11 @@ export default function ManualCodeInputScreen() {
     <View style={styles.container}>
       <View style={styles.centeredContent}>
         <Text style={styles.title}>
-          {isCheckedIn ? 'Enter Code to Check Out' : 'Enter Code to Check In'}
+          {isCheckedIn ? t('manualCode.enterCodeCheckOut') : t('manualCode.enterCodeCheckIn')}
         </Text>
 
         <Text style={styles.hint}>
-          Ask your leader for the numeric code shown alongside the QR code
+          {t('manualCode.hint')}
         </Text>
 
         <TextInput
@@ -139,10 +141,10 @@ export default function ManualCodeInputScreen() {
           value={code}
           onChangeText={handleCodeChange}
           keyboardType="number-pad"
-          placeholder="123-456"
+          placeholder={t('manualCode.placeholder')}
           placeholderTextColor="#999"
           maxLength={7}
-          accessibilityLabel="Numeric code input"
+          accessibilityLabel={t('manualCode.enterCodeCheckIn')}
           editable={!submitting}
           autoFocus
         />
@@ -162,17 +164,17 @@ export default function ManualCodeInputScreen() {
           {submitting ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.primaryBtnText}>Submit</Text>
+            <Text style={styles.primaryBtnText}>{t('manualCode.submit')}</Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.secondaryBtn}
           onPress={handleBack}
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('qrScanner.back')}
           accessibilityRole="button"
         >
-          <Text style={styles.secondaryBtnText}>Back</Text>
+          <Text style={styles.secondaryBtnText}>{t('qrScanner.back')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -184,15 +186,15 @@ export default function ManualCodeInputScreen() {
 function mapErrorMessage(errData: { error?: string; code?: string }): string {
   switch (errData.code) {
     case 'INVALID_NUMERIC_CODE':
-      return 'Invalid code. Please check the code with your leader and try again.';
+      return t('manualCode.invalidCode');
     case 'QR_EXPIRED':
-      return 'This code has expired. Ask your leader to generate a new session.';
+      return t('manualCode.codeExpired');
     case 'ACTIVE_SESSION_EXISTS':
-      return 'You are already checked in.';
+      return t('manualCode.alreadyCheckedIn');
     case 'NO_ACTIVE_SESSION':
-      return 'No active attendance session found. Please check in first.';
+      return t('manualCode.noActiveSession');
     default:
-      return 'Something went wrong. Please try again.';
+      return errData.error ?? t('manualCode.somethingWrong');
   }
 }
 

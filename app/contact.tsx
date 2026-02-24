@@ -2,10 +2,12 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import Svg, { Path } from 'react-native-svg';
+import { useTranslation } from '@/i18n';
 
 export default function ContactScreen() {
   const router = useRouter();
   const { name, phone } = useLocalSearchParams<{ name: string; phone: string }>();
+  const { t } = useTranslation();
 
   const handleCall = () => {
     Linking.openURL(`tel:${phone}`);
@@ -23,13 +25,13 @@ export default function ContactScreen() {
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('contact.back')}</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Contact</Text>
+        <Text style={styles.title}>{t('contact.title')}</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.nameText}>{name ?? 'Unknown'}</Text>
+        <Text style={styles.nameText}>{name ?? t('contact.unknown')}</Text>
         <Text style={styles.phoneText}>{phone ?? '—'}</Text>
       </View>
 
@@ -42,7 +44,7 @@ export default function ContactScreen() {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z" fill="#fff" /></Svg>
-          <Text style={styles.btnText}>Call</Text>
+          <Text style={styles.btnText}>{t('contact.call')}</Text>
         </View>
       </TouchableOpacity>
 
@@ -55,7 +57,7 @@ export default function ContactScreen() {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" fill="#007AFF" /></Svg>
-          <Text style={styles.smsBtnText}>SMS</Text>
+          <Text style={styles.smsBtnText}>{t('contact.sms')}</Text>
         </View>
       </TouchableOpacity>
     </View>

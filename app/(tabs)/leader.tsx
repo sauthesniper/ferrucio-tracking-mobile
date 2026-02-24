@@ -17,6 +17,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
 import { apiPost, apiGet } from '@/services/api';
+import { useTranslation } from '@/i18n';
 
 interface SessionData {
   sessionId: number;
@@ -44,6 +45,7 @@ export default function LeaderScreen() {
   const router = useRouter();
   const { token, user } = useAuth();
   const { isCheckedIn, refetch: refetchAttendance } = useAttendance();
+  const { t } = useTranslation();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [sessionType, setSessionType] = useState<'check_in' | 'check_out' | null>(null);
@@ -173,7 +175,7 @@ export default function LeaderScreen() {
         token,
       );
       if (res.ok) {
-        Alert.alert('Success', 'Leadership transferred successfully.');
+        Alert.alert(t('common.success'), t('leader.transferSuccess'));
         setShowTransferModal(false);
         // Clear session since we no longer own it
         setSession(null);
@@ -181,10 +183,10 @@ export default function LeaderScreen() {
         setEmployees([]);
       } else {
         const errData = res.data as unknown as { error?: string };
-        Alert.alert('Error', errData.error ?? 'Transfer failed');
+        Alert.alert(t('common.error'), errData.error ?? t('leader.transferFailed'));
       }
     } catch {
-      Alert.alert('Error', 'Network error. Please try again.');
+      Alert.alert(t('common.error'), t('common.networkError'));
     } finally {
       setTransferring(false);
     }
@@ -200,7 +202,7 @@ export default function LeaderScreen() {
           await refetchAttendance();
         } else {
           const errData = res.data as unknown as { error?: string };
-          Alert.alert('Error', errData.error ?? 'Self check-out failed');
+          Alert.alert(t('common.error'), errData.error ?? 'Self check-out failed');
         }
       } else {
         const res = await apiPost('/api/attendance/self-check-in', {}, token);
@@ -208,11 +210,11 @@ export default function LeaderScreen() {
           await refetchAttendance();
         } else {
           const errData = res.data as unknown as { error?: string };
-          Alert.alert('Error', errData.error ?? 'Self check-in failed');
+          Alert.alert(t('common.error'), errData.error ?? 'Self check-in failed');
         }
       }
     } catch {
-      Alert.alert('Error', 'Network error');
+      Alert.alert(t('common.error'), t('common.networkError'));
     } finally {
       setSelfCheckLoading(false);
     }
@@ -220,7 +222,7 @@ export default function LeaderScreen() {
 
   const endSession = () => {
     if (employees.length > 0) {
-      Alert.alert('Cannot End Session', 'There are still checked-in employees. Check them out first.');
+      Alert.alert(t('leader.cannotEndSession'), t('leader.cannotEndSessionMsg'));
       return;
     }
     setSession(null);
@@ -233,7 +235,7 @@ export default function LeaderScreen() {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Leader Panel</Text>
+          <Text style={styles.title}>{t('leader.title')}</Text>
         </View>
 
         {error && (
@@ -243,11 +245,11 @@ export default function LeaderScreen() {
         )}
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Start a Session</Text>
+          <Text style={styles.cardTitle}>{t('leader.startSession')}</Text>
           <Text style={styles.cardDesc}>
             {isCheckedIn
-              ? 'Create a check-in or check-out session for your team.'
-              : 'You must be checked in before starting a session.'}
+              ? t('leader.startSessionDescCheckedIn')
+              : t('leader.startSessionDescNotCheckedIn')}
           </Text>
 
           <TouchableOpacity
@@ -260,7 +262,7 @@ export default function LeaderScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Start Check-In Session</Text>
+              <Text style={styles.btnText}>{t('leader.startCheckInSession')}</Text>
             )}
           </TouchableOpacity>
 
@@ -274,7 +276,7 @@ export default function LeaderScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Start Check-Out Session</Text>
+              <Text style={styles.btnText}>{t('leader.startCheckOutSession')}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -285,20 +287,20 @@ export default function LeaderScreen() {
           accessibilityLabel="Manual check-in or check-out"
           accessibilityRole="button"
         >
-          <Text style={styles.manualBtnText}>Manual Check-In / Check-Out</Text>
+          <Text style={styles.manualBtnText}>{t('leader.manualCheckInOut')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[isCheckedIn ? styles.checkOutBtn : styles.checkInBtn, selfCheckLoading && { opacity: 0.6 }]}
           onPress={handleSelfCheck}
           disabled={selfCheckLoading}
-          accessibilityLabel={isCheckedIn ? 'Self check-out' : 'Self check-in'}
+          accessibilityLabel={isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
           accessibilityRole="button"
         >
           {selfCheckLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>{isCheckedIn ? 'Self Check-Out' : 'Self Check-In'}</Text>
+            <Text style={styles.btnText}>{isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -311,9 +313,9 @@ export default function LeaderScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>
-            {sessionType === 'check_in' ? 'Check-In Session' : 'Check-Out Session'}
+            {sessionType === 'check_in' ? t('leader.checkInSession') : t('leader.checkOutSession')}
           </Text>
-          <Text style={styles.subtitle}>Session #{session.sessionId}</Text>
+          <Text style={styles.subtitle}>{t('leader.sessionNumber').replace('{id}', String(session.sessionId))}</Text>
         </View>
 
         {error && (
@@ -324,7 +326,7 @@ export default function LeaderScreen() {
 
         {/* QR Code */}
         <View style={styles.qrCard}>
-          <Text style={styles.qrLabel}>Scan this QR code</Text>
+          <Text style={styles.qrLabel}>{t('leader.scanQrCode')}</Text>
           <View style={styles.qrContainer}>
             <QRCode value={session.qrToken} size={220} />
           </View>
@@ -344,7 +346,7 @@ export default function LeaderScreen() {
             accessibilityRole="button"
           >
             <Text style={styles.actionBtnText}>
-              {loading ? 'Generating...' : 'New QR Code'}
+              {loading ? t('leader.generating') : t('leader.newQrCode')}
             </Text>
           </TouchableOpacity>
 
@@ -354,7 +356,7 @@ export default function LeaderScreen() {
             accessibilityLabel="Transfer leadership"
             accessibilityRole="button"
           >
-            <Text style={styles.actionBtnText}>Transfer</Text>
+            <Text style={styles.actionBtnText}>{t('leader.transfer')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -364,16 +366,16 @@ export default function LeaderScreen() {
           accessibilityLabel="Manual check-in or check-out"
           accessibilityRole="button"
         >
-          <Text style={styles.manualBtnText}>Manual Check-In / Check-Out</Text>
+          <Text style={styles.manualBtnText}>{t('leader.manualCheckInOut')}</Text>
         </TouchableOpacity>
 
         {/* Employee list */}
         <View style={styles.employeeSection}>
           <Text style={styles.sectionTitle}>
-            Employees ({employees.length})
+            {t('leader.employees').replace('{count}', String(employees.length))}
           </Text>
           {employees.length === 0 ? (
-            <Text style={styles.emptyText}>No employees yet. Waiting for scans...</Text>
+            <Text style={styles.emptyText}>{t('leader.noEmployeesYet')}</Text>
           ) : (
             employees.map((emp, idx) => (
               <View key={`emp-${emp.id}-${idx}`} style={styles.employeeRow}>
@@ -412,14 +414,14 @@ export default function LeaderScreen() {
           style={[isCheckedIn ? styles.endSessionBtn : styles.checkInBtn, selfCheckLoading && { opacity: 0.6 }]}
           onPress={handleSelfCheck}
           disabled={selfCheckLoading}
-          accessibilityLabel={isCheckedIn ? 'Self check-out' : 'Self check-in'}
+          accessibilityLabel={isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
           accessibilityRole="button"
         >
           {selfCheckLoading ? (
             <ActivityIndicator color={isCheckedIn ? '#DC3545' : '#fff'} />
           ) : (
             <Text style={isCheckedIn ? styles.endSessionBtnText : styles.btnText}>
-              {isCheckedIn ? 'Self Check-Out' : 'Self Check-In'}
+              {isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
             </Text>
           )}
         </TouchableOpacity>
@@ -430,7 +432,7 @@ export default function LeaderScreen() {
           accessibilityLabel="End session"
           accessibilityRole="button"
         >
-          <Text style={styles.endSessionBtnText}>End Session</Text>
+          <Text style={styles.endSessionBtnText}>{t('leader.endSession')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -443,13 +445,13 @@ export default function LeaderScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Transfer Leadership</Text>
-            <Text style={styles.modalDesc}>Select a leader to transfer this session to:</Text>
+            <Text style={styles.modalTitle}>{t('leader.transferLeadership')}</Text>
+            <Text style={styles.modalDesc}>{t('leader.selectLeaderToTransfer')}</Text>
 
             {loadingLeaders ? (
               <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 24 }} />
             ) : leaders.length === 0 ? (
-              <Text style={styles.emptyText}>No other leaders available.</Text>
+              <Text style={styles.emptyText}>{t('leader.noOtherLeaders')}</Text>
             ) : (
               <FlatList
                 data={leaders}
@@ -480,7 +482,7 @@ export default function LeaderScreen() {
               accessibilityLabel="Cancel transfer"
               accessibilityRole="button"
             >
-              <Text style={styles.modalCloseBtnText}>Cancel</Text>
+              <Text style={styles.modalCloseBtnText}>{t('leader.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>

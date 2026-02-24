@@ -11,20 +11,32 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
 import { loadApiMode, setApiMode, getApiMode } from '@/services/api';
+import { useTranslation } from '@/i18n';
+import { registerPushToken } from '@/services/push-token';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, token: authToken } = useAuth();
+  const { t } = useTranslation();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isProd, setIsProd] = useState(false);
+  const justLoggedIn = React.useRef(false);
 
   useEffect(() => {
     loadApiMode().then((mode) => setIsProd(mode === 'prod'));
   }, []);
+
+  // Register push token after successful login
+  useEffect(() => {
+    if (authToken && justLoggedIn.current) {
+      justLoggedIn.current = false;
+      registerPushToken(authToken).catch(() => {});
+    }
+  }, [authToken]);
 
   const toggleMode = async (value: boolean) => {
     setIsProd(value);
@@ -35,6 +47,7 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
     try {
+      justLoggedIn.current = true;
       await login(username, password);
       router.replace('/(tabs)');
     } catch (err: unknown) {
@@ -47,28 +60,28 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>CONI</Text>
+      <Text style={styles.title}>{t('login.title')}</Text>
 
       {/* Backend URL switch */}
       <View style={styles.switchRow}>
-        <Text style={[styles.switchLabel, !isProd && styles.switchLabelActive]}>LOCAL</Text>
+        <Text style={[styles.switchLabel, !isProd && styles.switchLabelActive]}>{t('login.local')}</Text>
         <Switch
           value={isProd}
           onValueChange={toggleMode}
           trackColor={{ false: '#d1d5db', true: '#007AFF' }}
           thumbColor="#fff"
         />
-        <Text style={[styles.switchLabel, isProd && styles.switchLabelActive]}>PROXY PROD</Text>
+        <Text style={[styles.switchLabel, isProd && styles.switchLabelActive]}>{t('login.proxyProd')}</Text>
       </View>
       <Text style={styles.modeHint}>
-        {isProd ? 'ngrok (orice rețea)' : 'local Expo dev'}
+        {isProd ? t('login.modeNgrok') : t('login.modeLocal')}
       </Text>
 
       {error !== '' && <Text style={styles.error}>{error}</Text>}
 
       <TextInput
         style={styles.input}
-        placeholder="Username"
+        placeholder={t('login.username')}
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
@@ -77,7 +90,7 @@ export default function LoginScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder={t('login.password')}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -89,15 +102,15 @@ export default function LoginScreen() {
         onPress={handleLogin}
         disabled={loading}
         accessibilityRole="button"
-        accessibilityLabel="Login"
+        accessibilityLabel={t('login.submit')}
       >
         {loading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color="#fff" size="small" />
-            <Text style={styles.buttonText}>Logging in...</Text>
+            <Text style={styles.buttonText}>{t('login.loggingIn')}</Text>
           </View>
         ) : (
-          <Text style={styles.buttonText}>Login</Text>
+          <Text style={styles.buttonText}>{t('login.submit')}</Text>
         )}
       </TouchableOpacity>
     </View>

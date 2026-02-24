@@ -65,18 +65,37 @@ async function request<T>(
 
   let res: Response;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     res = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
-  } catch {
+    clearTimeout(timeoutId);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(
+        `Serverul nu a răspuns în 10 secunde (${baseUrl}). Verifică că serverul rulează și că telefonul e pe aceeași rețea.`
+      );
+    }
     throw new Error(
       `Nu se poate conecta la server (${baseUrl}). Verifică că serverul rulează și că telefonul e pe aceeași rețea.`
     );
   }
 
-  const data = await res.json();
+  let data: T;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    data = await res.json();
+  } else {
+    const text = await res.text();
+    throw new Error(
+      `Serverul a returnat un răspuns neașteptat (${res.status}). Verifică URL-ul serverului.`
+    );
+  }
+
   return { ok: res.ok, status: res.status, data };
 }
 

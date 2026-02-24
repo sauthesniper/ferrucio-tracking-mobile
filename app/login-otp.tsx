@@ -15,12 +15,15 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
 import { requestOtp } from '@/services/auth-service';
 import { loadApiMode, setApiMode } from '@/services/api';
+import { useTranslation } from '@/i18n';
+import { registerPushToken } from '@/services/push-token';
 
 type AuthMode = 'otp' | 'code';
 
 export default function LoginOtpScreen() {
   const router = useRouter();
-  const { loginWithOtp, loginWithCode } = useAuth();
+  const { loginWithOtp, loginWithCode, token: authToken } = useAuth();
+  const { t } = useTranslation();
 
   const [mode, setMode] = useState<AuthMode>('otp');
   const [phone, setPhone] = useState('');
@@ -30,10 +33,19 @@ export default function LoginOtpScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isProd, setIsProd] = useState(false);
+  const justLoggedIn = React.useRef(false);
 
   useEffect(() => {
     loadApiMode().then((m) => setIsProd(m === 'prod'));
   }, []);
+
+  // Register push token after successful login
+  useEffect(() => {
+    if (authToken && justLoggedIn.current) {
+      justLoggedIn.current = false;
+      registerPushToken(authToken).catch(() => {});
+    }
+  }, [authToken]);
 
   const toggleMode = async (value: boolean) => {
     setIsProd(value);
@@ -58,6 +70,7 @@ export default function LoginOtpScreen() {
     setError('');
     setLoading(true);
     try {
+      justLoggedIn.current = true;
       await loginWithOtp(phone, otpCode);
       router.replace('/(tabs)');
     } catch (err: unknown) {
@@ -72,6 +85,7 @@ export default function LoginOtpScreen() {
     setError('');
     setLoading(true);
     try {
+      justLoggedIn.current = true;
       await loginWithCode(loginCode);
       router.replace('/(tabs)');
     } catch (err: unknown) {
@@ -99,19 +113,19 @@ export default function LoginOtpScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>CONI</Text>
+        <Text style={styles.title}>{t('login.title')}</Text>
 
         {/* Backend URL switch */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 4 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#9ca3af' : '#007AFF' }}>LOCAL</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#9ca3af' : '#007AFF' }}>{t('login.local')}</Text>
           <Switch value={isProd} onValueChange={toggleMode} trackColor={{ false: '#d1d5db', true: '#007AFF' }} thumbColor="#fff" />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#007AFF' : '#9ca3af' }}>PROXY PROD</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#007AFF' : '#9ca3af' }}>{t('login.proxyProd')}</Text>
         </View>
         <Text style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16 }}>
-          {isProd ? 'ngrok (orice rețea)' : 'local Expo dev'}
+          {isProd ? t('login.modeNgrok') : t('login.modeLocal')}
         </Text>
 
-        <Text style={styles.subtitle}>Autentificare Angajat</Text>
+        <Text style={styles.subtitle}>{t('loginOtp.subtitle')}</Text>
 
         {error !== '' && <Text style={styles.error}>{error}</Text>}
 
@@ -125,7 +139,7 @@ export default function LoginOtpScreen() {
             accessibilityLabel="Autentificare OTP"
           >
             <Text style={[styles.modeButtonText, mode === 'otp' && styles.modeButtonTextActive]}>
-              OTP Telefon
+              {t('loginOtp.otpPhone')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -133,10 +147,10 @@ export default function LoginOtpScreen() {
             onPress={() => switchMode('code')}
             disabled={loading}
             accessibilityRole="button"
-            accessibilityLabel="Autentificare cod login"
+            accessibilityLabel={t('loginOtp.loginCode')}
           >
             <Text style={[styles.modeButtonText, mode === 'code' && styles.modeButtonTextActive]}>
-              Cod Login
+              {t('loginOtp.loginCode')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -145,13 +159,13 @@ export default function LoginOtpScreen() {
           <>
             <TextInput
               style={styles.input}
-              placeholder="Număr de telefon"
+              placeholder={t('loginOtp.phone')}
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
               autoCapitalize="none"
               editable={!loading}
-              accessibilityLabel="Număr de telefon"
+              accessibilityLabel={t('loginOtp.phone')}
             />
 
             {!otpRequested ? (
@@ -160,28 +174,28 @@ export default function LoginOtpScreen() {
                 onPress={handleRequestOtp}
                 disabled={loading || !phone.trim()}
                 accessibilityRole="button"
-                accessibilityLabel="Solicită OTP"
+                accessibilityLabel={t('loginOtp.requestOtp')}
               >
                 {loading ? (
                   <View style={styles.loadingRow}>
                     <ActivityIndicator color="#fff" size="small" />
-                    <Text style={styles.buttonText}>Se trimite...</Text>
+                    <Text style={styles.buttonText}>{t('loginOtp.sending')}</Text>
                   </View>
                 ) : (
-                  <Text style={styles.buttonText}>Solicită OTP</Text>
+                  <Text style={styles.buttonText}>{t('loginOtp.requestOtp')}</Text>
                 )}
               </TouchableOpacity>
             ) : (
               <>
                 <TextInput
                   style={styles.input}
-                  placeholder="Cod OTP"
+                  placeholder={t('loginOtp.otpCode')}
                   value={otpCode}
                   onChangeText={setOtpCode}
                   keyboardType="number-pad"
                   maxLength={6}
                   editable={!loading}
-                  accessibilityLabel="Cod OTP"
+                  accessibilityLabel={t('loginOtp.otpCode')}
                 />
 
                 <TouchableOpacity
@@ -189,15 +203,15 @@ export default function LoginOtpScreen() {
                   onPress={handleVerifyOtp}
                   disabled={loading || !otpCode.trim()}
                   accessibilityRole="button"
-                  accessibilityLabel="Verifică OTP"
+                  accessibilityLabel={t('loginOtp.verify')}
                 >
                   {loading ? (
                     <View style={styles.loadingRow}>
                       <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.buttonText}>Se verifică...</Text>
+                      <Text style={styles.buttonText}>{t('loginOtp.verifying')}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.buttonText}>Verifică</Text>
+                    <Text style={styles.buttonText}>{t('loginOtp.verify')}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -212,7 +226,7 @@ export default function LoginOtpScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Retrimite OTP"
                 >
-                  <Text style={styles.resendText}>Retrimite codul</Text>
+                  <Text style={styles.resendText}>{t('loginOtp.resendCode')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -221,12 +235,12 @@ export default function LoginOtpScreen() {
           <>
             <TextInput
               style={styles.input}
-              placeholder="Cod de login"
+              placeholder={t('loginOtp.loginCodePlaceholder')}
               value={loginCode}
               onChangeText={setLoginCode}
               autoCapitalize="none"
               editable={!loading}
-              accessibilityLabel="Cod de login"
+              accessibilityLabel={t('loginOtp.loginCodePlaceholder')}
             />
 
             <TouchableOpacity
@@ -234,15 +248,15 @@ export default function LoginOtpScreen() {
               onPress={handleLoginWithCode}
               disabled={loading || !loginCode.trim()}
               accessibilityRole="button"
-              accessibilityLabel="Autentificare"
+              accessibilityLabel={t('loginOtp.authenticate')}
             >
               {loading ? (
                 <View style={styles.loadingRow}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.buttonText}>Se autentifică...</Text>
+                  <Text style={styles.buttonText}>{t('loginOtp.authenticating')}</Text>
                 </View>
               ) : (
-                <Text style={styles.buttonText}>Autentificare</Text>
+                <Text style={styles.buttonText}>{t('loginOtp.authenticate')}</Text>
               )}
             </TouchableOpacity>
           </>
@@ -256,7 +270,7 @@ export default function LoginOtpScreen() {
           accessibilityRole="link"
           accessibilityLabel="Login administrator"
         >
-          <Text style={styles.linkText}>Login administrator (username/parolă)</Text>
+          <Text style={styles.linkText}>{t('loginOtp.adminLogin')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

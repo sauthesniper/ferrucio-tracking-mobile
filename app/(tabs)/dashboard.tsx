@@ -16,6 +16,7 @@ import { useAttendance } from '@/hooks/use-attendance';
 import { useTelemetry } from '@/hooks/use-telemetry';
 import { apiGet } from '@/services/api';
 import Svg, { Path } from 'react-native-svg';
+import { useTranslation } from '@/i18n';
 
 interface LeaderInfo {
   id: number;
@@ -36,6 +37,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { token, user } = useAuth();
   const { isCheckedIn, currentSession, loading: statusLoading, refetch } = useAttendance();
+  const { t } = useTranslation();
 
   // Start/stop telemetry collection based on attendance state
   useTelemetry(isCheckedIn, currentSession?.id ?? null);
@@ -146,7 +148,7 @@ export default function DashboardScreen() {
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading dashboard...</Text>
+          <Text style={styles.loadingText}>{t('dashboard.loading')}</Text>
         </View>
       </View>
     );
@@ -155,7 +157,7 @@ export default function DashboardScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dashboard</Text>
+        <Text style={styles.title}>{t('dashboard.title')}</Text>
         <TouchableOpacity
           style={[styles.refreshBtn, refreshing && styles.refreshBtnDisabled]}
           onPress={refreshAll}
@@ -189,14 +191,14 @@ export default function DashboardScreen() {
       <View style={[styles.statusCard, isCheckedIn ? styles.statusCheckedIn : styles.statusCheckedOut]}>
         <View style={[styles.statusDot, isCheckedIn ? styles.dotActive : styles.dotInactive]} />
         <Text style={styles.statusText}>
-          {isCheckedIn ? 'Checked In — Working' : 'Checked Out'}
+          {isCheckedIn ? t('dashboard.checkedIn') : t('dashboard.checkedOut')}
         </Text>
       </View>
 
       {/* Leader: checked-in employee count */}
       {(user?.role === 'leader' || user?.role === 'admin') && dashboard?.checkedInCount != null && (
         <View style={styles.checkedInCountCard}>
-          <Text style={styles.checkedInCountLabel}>Checked-In Employees</Text>
+          <Text style={styles.checkedInCountLabel}>{t('dashboard.checkedInEmployees')}</Text>
           <Text style={styles.checkedInCountValue}>{dashboard.checkedInCount}</Text>
         </View>
       )}
@@ -204,7 +206,7 @@ export default function DashboardScreen() {
       {/* Leader info when checked in (only for non-leader roles) */}
       {isCheckedIn && dashboard?.leader && user?.role !== 'leader' && user?.role !== 'admin' && (
         <View style={styles.leaderCard}>
-          <Text style={styles.leaderTitle}>Your Leader</Text>
+          <Text style={styles.leaderTitle}>{t('dashboard.yourLeader')}</Text>
           <Text style={styles.leaderName}>{dashboard.leader.username}</Text>
           {dashboard.leader.phone && (
             <TouchableOpacity
@@ -225,7 +227,7 @@ export default function DashboardScreen() {
       {/* Live timer when checked in */}
       {isCheckedIn && (
         <View style={styles.timerCard}>
-          <Text style={styles.timerLabel}>Time Working Today</Text>
+          <Text style={styles.timerLabel}>{t('dashboard.timeWorkingToday')}</Text>
           <Text style={styles.timerValue}>{formatDuration(elapsedSeconds)}</Text>
         </View>
       )}
@@ -233,13 +235,13 @@ export default function DashboardScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Last Work Day</Text>
+          <Text style={styles.statLabel}>{t('dashboard.lastWorkDay')}</Text>
           <Text style={styles.statValue}>
             {dashboard?.lastWorkDay ?? '—'}
           </Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Hours This Month</Text>
+          <Text style={styles.statLabel}>{t('dashboard.hoursThisMonth')}</Text>
           <Text style={styles.statValue}>
             {dashboard ? formatHours(dashboard.totalHoursThisMonth) : '—'}
           </Text>
@@ -248,7 +250,7 @@ export default function DashboardScreen() {
 
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Hours Today</Text>
+          <Text style={styles.statLabel}>{t('dashboard.hoursToday')}</Text>
           <Text style={styles.statValue}>
             {dashboard ? formatHours(dashboard.hoursWorkedToday) : '—'}
           </Text>
@@ -264,7 +266,7 @@ export default function DashboardScreen() {
             accessibilityLabel="Check in"
             accessibilityRole="button"
           >
-            <Text style={styles.btnText}>Check In</Text>
+            <Text style={styles.btnText}>{t('dashboard.checkIn')}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -273,7 +275,7 @@ export default function DashboardScreen() {
             accessibilityLabel="Check out"
             accessibilityRole="button"
           >
-            <Text style={styles.btnText}>Check Out</Text>
+            <Text style={styles.btnText}>{t('dashboard.checkOut')}</Text>
           </TouchableOpacity>
         )}
       </View>

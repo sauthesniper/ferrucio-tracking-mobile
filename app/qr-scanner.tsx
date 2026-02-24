@@ -11,6 +11,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
 import { apiPost } from '@/services/api';
+import { useTranslation, t } from '@/i18n';
 
 type ScanResult =
   | { kind: 'check-in'; numericCode: string; attendanceId: number }
@@ -20,6 +21,7 @@ export default function QRScannerScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const { isCheckedIn, refetch } = useAttendance();
+  const { t } = useTranslation();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(true);
@@ -81,7 +83,7 @@ export default function QRScannerScreen() {
         }
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('qrScanner.networkError'));
     } finally {
       setSubmitting(false);
       processingRef.current = false;
@@ -112,39 +114,39 @@ export default function QRScannerScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.centeredContent}>
-          <Text style={styles.permissionTitle}>Camera Permission Required</Text>
+          <Text style={styles.permissionTitle}>{t('qrScanner.permissionTitle')}</Text>
           <Text style={styles.permissionText}>
-            We need camera access to scan QR codes for check-in and check-out.
+            {t('qrScanner.permissionText')}
           </Text>
           {permission.canAskAgain ? (
             <TouchableOpacity
               style={styles.primaryBtn}
               onPress={requestPermission}
-              accessibilityLabel="Grant camera permission"
+              accessibilityLabel={t('qrScanner.grantPermission')}
               accessibilityRole="button"
             >
-              <Text style={styles.primaryBtnText}>Grant Permission</Text>
+              <Text style={styles.primaryBtnText}>{t('qrScanner.grantPermission')}</Text>
             </TouchableOpacity>
           ) : (
             <Text style={styles.permissionText}>
-              Please enable camera access in your device settings.
+              {t('qrScanner.enableInSettings')}
             </Text>
           )}
           <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={handleBack}
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('qrScanner.back')}
             accessibilityRole="button"
           >
-            <Text style={styles.secondaryBtnText}>Back</Text>
+            <Text style={styles.secondaryBtnText}>{t('qrScanner.back')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={() => router.push('/manual-code-input' as any)}
-            accessibilityLabel="Enter code manually"
+            accessibilityLabel={t('qrScanner.enterCodeManually')}
             accessibilityRole="button"
           >
-            <Text style={styles.secondaryBtnText}>Enter code manually</Text>
+            <Text style={styles.secondaryBtnText}>{t('qrScanner.enterCodeManually')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -160,26 +162,26 @@ export default function QRScannerScreen() {
           {result.kind === 'check-in' ? (
             <>
               <Text style={styles.successIcon}>✓</Text>
-              <Text style={styles.successTitle}>Checked In</Text>
-              <Text style={styles.codeLabel}>Your Code</Text>
+              <Text style={styles.successTitle}>{t('qrScanner.checkedIn')}</Text>
+              <Text style={styles.codeLabel}>{t('qrScanner.yourCode')}</Text>
               <Text style={styles.numericCode}>{result.numericCode}</Text>
-              <Text style={styles.codeHint}>Show this code to your leader for confirmation</Text>
+              <Text style={styles.codeHint}>{t('qrScanner.showCodeHint')}</Text>
             </>
           ) : (
             <>
               <Text style={styles.successIcon}>✓</Text>
-              <Text style={styles.successTitle}>Checked Out</Text>
-              <Text style={styles.durationLabel}>Duration</Text>
+              <Text style={styles.successTitle}>{t('qrScanner.checkedOut')}</Text>
+              <Text style={styles.durationLabel}>{t('qrScanner.duration')}</Text>
               <Text style={styles.durationValue}>{formatDuration(result.duration)}</Text>
             </>
           )}
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={handleBack}
-            accessibilityLabel="Back to dashboard"
+            accessibilityLabel={t('qrScanner.backToDashboard')}
             accessibilityRole="button"
           >
-            <Text style={styles.primaryBtnText}>Back to Dashboard</Text>
+            <Text style={styles.primaryBtnText}>{t('qrScanner.backToDashboard')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -193,23 +195,23 @@ export default function QRScannerScreen() {
       <View style={styles.container}>
         <View style={styles.centeredContent}>
           <Text style={styles.errorIcon}>✕</Text>
-          <Text style={styles.errorTitle}>Error</Text>
+          <Text style={styles.errorTitle}>{t('qrScanner.error')}</Text>
           <Text style={styles.errorMessage}>{error}</Text>
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={handleRetry}
-            accessibilityLabel="Try scanning again"
+            accessibilityLabel={t('qrScanner.scanAgain')}
             accessibilityRole="button"
           >
-            <Text style={styles.primaryBtnText}>Scan Again</Text>
+            <Text style={styles.primaryBtnText}>{t('qrScanner.scanAgain')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={handleBack}
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('qrScanner.back')}
             accessibilityRole="button"
           >
-            <Text style={styles.secondaryBtnText}>Back</Text>
+            <Text style={styles.secondaryBtnText}>{t('qrScanner.back')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -233,13 +235,13 @@ export default function QRScannerScreen() {
           <TouchableOpacity
             style={styles.backBtn}
             onPress={handleBack}
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('qrScanner.back')}
             accessibilityRole="button"
           >
-            <Text style={styles.backBtnText}>← Back</Text>
+            <Text style={styles.backBtnText}>← {t('qrScanner.back')}</Text>
           </TouchableOpacity>
           <Text style={styles.overlayTitle}>
-            {isCheckedIn ? 'Scan QR to Check Out' : 'Scan QR to Check In'}
+            {isCheckedIn ? t('qrScanner.scanToCheckOut') : t('qrScanner.scanToCheckIn')}
           </Text>
         </View>
 
@@ -249,19 +251,19 @@ export default function QRScannerScreen() {
           {submitting && (
             <View style={styles.submittingRow}>
               <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.submittingText}>Processing...</Text>
+              <Text style={styles.submittingText}>{t('qrScanner.processing')}</Text>
             </View>
           )}
           <Text style={styles.overlayHint}>
-            Point your camera at the QR code displayed by your leader
+            {t('qrScanner.pointCamera')}
           </Text>
           <TouchableOpacity
             onPress={() => router.push('/manual-code-input' as any)}
-            accessibilityLabel="Enter code manually"
+            accessibilityLabel={t('qrScanner.enterCodeManually')}
             accessibilityRole="button"
             style={styles.manualEntryBtn}
           >
-            <Text style={styles.manualEntryText}>Enter code manually</Text>
+            <Text style={styles.manualEntryText}>{t('qrScanner.enterCodeManually')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -274,15 +276,15 @@ export default function QRScannerScreen() {
 function mapErrorMessage(errData: { error?: string; code?: string }): string {
   const code = errData.code;
   if (code === 'QR_EXPIRED' || errData.error?.toLowerCase().includes('expired')) {
-    return 'This QR code has expired. Ask your leader to generate a new one.';
+    return t('qrScanner.qrExpired');
   }
   if (code === 'ALREADY_CHECKED_IN' || errData.error?.toLowerCase().includes('already')) {
-    return 'You are already checked in. Check out first before checking in again.';
+    return t('qrScanner.alreadyCheckedIn');
   }
   if (code === 'NO_ACTIVE_SESSION' || errData.error?.toLowerCase().includes('no active')) {
-    return 'No active attendance session found. Please check in first.';
+    return t('qrScanner.noActiveSession');
   }
-  return errData.error ?? 'Something went wrong. Please try again.';
+  return errData.error ?? t('qrScanner.somethingWrong');
 }
 
 function formatDuration(minutes: number): string {
