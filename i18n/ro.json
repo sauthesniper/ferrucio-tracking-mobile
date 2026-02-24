@@ -35,6 +35,8 @@
   "leader.endSession": "Încheie sesiunea",
   "leader.cannotEndSession": "Nu se poate încheia sesiunea",
   "leader.cannotEndSessionMsg": "Mai sunt angajați pontați. Efectuează check-out-ul lor mai întâi.",
+  "leader.warningEndSession": "Atenție",
+  "leader.warningEndSessionMsg": "Nu toți angajații au fost depontați. Ești sigur că vrei să închei sesiunea?",
   "leader.transferLeadership": "Transfer conducere",
   "leader.selectLeaderToTransfer": "Selectează un lider căruia să-i transferi această sesiune:",
   "leader.noOtherLeaders": "Niciun alt lider disponibil.",
