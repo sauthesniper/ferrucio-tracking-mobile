@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
+import { useLocationTracking } from '@/hooks/use-location-tracking';
 import { apiPost } from '@/services/api';
 import { useTranslation, t } from '@/i18n';
 
@@ -21,6 +22,7 @@ export default function QRScannerScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const { isCheckedIn, refetch } = useAttendance();
+  const { latitude, longitude } = useLocationTracking();
   const { t } = useTranslation();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -53,7 +55,7 @@ export default function QRScannerScreen() {
         // Check-out flow
         const res = await apiPost<{ attendanceId: number; checkOutAt: string; durationMinutes: number }>(
           '/api/attendance/check-out',
-          { qrToken },
+          { qrToken, latitude, longitude },
           token,
         );
         if (res.ok) {
@@ -67,7 +69,7 @@ export default function QRScannerScreen() {
         // Check-in flow
         const res = await apiPost<{ attendanceId: number; numericCode: string }>(
           '/api/attendance/check-in',
-          { qrToken },
+          { qrToken, latitude, longitude },
           token,
         );
         if (res.ok) {

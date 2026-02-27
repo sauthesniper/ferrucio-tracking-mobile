@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
+import { useLocationTracking } from '@/hooks/use-location-tracking';
 import { apiPost } from '@/services/api';
 import { useTranslation, t } from '@/i18n';
 import {
@@ -26,6 +27,7 @@ export default function ManualCodeInputScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const { isCheckedIn, refetch } = useAttendance();
+  const { latitude, longitude } = useLocationTracking();
   const { t } = useTranslation();
 
   const [code, setCode] = useState('');
@@ -51,7 +53,7 @@ export default function ManualCodeInputScreen() {
           attendanceId: number;
           checkOutAt: string;
           durationMinutes: number;
-        }>('/api/attendance/check-out-code', { numericCode }, token);
+        }>('/api/attendance/check-out-code', { numericCode, latitude, longitude }, token);
 
         if (res.ok) {
           setResult({ kind: 'check-out', durationMinutes: res.data.durationMinutes });
@@ -64,7 +66,7 @@ export default function ManualCodeInputScreen() {
       } else {
         const res = await apiPost<{ attendanceId: number; numericCode: string }>(
           '/api/attendance/check-in-code',
-          { numericCode },
+          { numericCode, latitude, longitude },
           token,
         );
 

@@ -195,8 +195,8 @@ export default function DashboardScreen() {
         </Text>
       </View>
 
-      {/* Leader: checked-in employee count */}
-      {(user?.role === 'leader' || user?.role === 'admin') && dashboard?.checkedInCount != null && (
+      {/* Zone tracking data: checked-in employee count — only for leader/admin roles (Req 8.1, 8.4) */}
+      {user?.role !== 'employee' && dashboard?.checkedInCount != null && (
         <View style={styles.checkedInCountCard}>
           <Text style={styles.checkedInCountLabel}>{t('dashboard.checkedInEmployees')}</Text>
           <Text style={styles.checkedInCountValue}>{dashboard.checkedInCount}</Text>

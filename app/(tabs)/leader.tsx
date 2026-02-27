@@ -9,6 +9,7 @@ import {
   FlatList,
   Alert,
   Modal,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -33,6 +34,7 @@ interface Employee {
   phone?: string;
   check_in_at?: string;
   check_out_at?: string;
+  duration_minutes?: number;
 }
 
 interface LeaderInfo {
@@ -61,6 +63,54 @@ export default function LeaderScreen() {
   const [transferring, setTransferring] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Calculate work duration from check-in time to now
+  const formatWorkDuration = (checkInAt?: string): string => {
+    if (!checkInAt) return '—';
+    const checkInTime = new Date(checkInAt).getTime();
+    const now = Date.now();
+    const totalSeconds = Math.floor((now - checkInTime) / 1000);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  };
+
+  // Handle manual check-out for an employee
+  const handleCheckOutEmployee = (emp: Employee) => {
+    Alert.alert(
+      t('leader.checkOutConfirmTitle'),
+      t('leader.checkOutConfirmMsg').replace('{name}', emp.name),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.confirm'),
+          style: 'destructive',
+          onPress: async () => {
+            if (!token) return;
+            try {
+              const res = await apiPost('/api/attendance/manual-check-out', { employee_id: emp.id }, token);
+              if (res.ok) {
+                Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.name));
+                pollEmployees();
+              } else {
+                const errData = res.data as unknown as { error?: string };
+                Alert.alert(t('common.error'), errData.error ?? t('leader.checkOutFailed'));
+              }
+            } catch {
+              Alert.alert(t('common.error'), t('common.networkError'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Handle direct phone call to employee
+  const handleCallEmployee = (emp: Employee) => {
+    if (emp.phone) {
+      Linking.openURL(`tel:${emp.phone}`);
+    }
+  };
 
   // Refresh attendance status when tab is focused
   useFocusEffect(
@@ -385,6 +435,9 @@ export default function LeaderScreen() {
           <Text style={styles.sectionTitle}>
             {t('leader.employees').replace('{count}', String(employees.length))}
           </Text>
+          <Text style={styles.checkedInTotal}>
+            {t('leader.checkedInTotal').replace('{count}', String(employees.filter(e => !e.check_out_at).length))}
+          </Text>
           {employees.length === 0 ? (
             <Text style={styles.emptyText}>{t('leader.noEmployeesYet')}</Text>
           ) : (
@@ -393,6 +446,11 @@ export default function LeaderScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.employeeName}>{emp.name}</Text>
                   <Text style={styles.employeeCode}>{emp.unique_code}</Text>
+                  {emp.check_in_at && !emp.check_out_at && (
+                    <Text style={styles.employeeDuration}>
+                      {t('leader.workDuration')}: {formatWorkDuration(emp.check_in_at)}
+                    </Text>
+                  )}
                 </View>
                 <Text style={styles.employeeTime}>
                   {emp.check_in_at
@@ -401,21 +459,30 @@ export default function LeaderScreen() {
                       ? new Date(emp.check_out_at).toLocaleTimeString()
                       : ''}
                 </Text>
-                {emp.phone ? (
-                  <TouchableOpacity
-                    style={styles.contactBtn}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/contact' as any,
-                        params: { name: emp.name, phone: emp.phone },
-                      })
-                    }
-                    accessibilityLabel={`Contact ${emp.name}`}
-                    accessibilityRole="button"
-                  >
-                    <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z" fill="#007AFF" /></Svg>
-                  </TouchableOpacity>
-                ) : null}
+                <View style={styles.employeeActions}>
+                  {/* Direct phone call button */}
+                  {emp.phone ? (
+                    <TouchableOpacity
+                      style={styles.callBtn}
+                      onPress={() => handleCallEmployee(emp)}
+                      accessibilityLabel={t('leader.callEmployee') + ` ${emp.name}`}
+                      accessibilityRole="button"
+                    >
+                      <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z" fill="#007AFF" /></Svg>
+                    </TouchableOpacity>
+                  ) : null}
+                  {/* Check-out (depontare) button — only for active sessions */}
+                  {!emp.check_out_at && (
+                    <TouchableOpacity
+                      style={styles.checkOutEmployeeBtn}
+                      onPress={() => handleCheckOutEmployee(emp)}
+                      accessibilityLabel={t('leader.checkOutEmployee') + ` ${emp.name}`}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.checkOutEmployeeBtnText}>{t('leader.checkOutEmployee')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))
           )}
@@ -591,6 +658,31 @@ const styles = StyleSheet.create({
   employeeName: { fontSize: 16, fontWeight: '500', color: '#333' },
   employeeCode: { fontSize: 13, color: '#666', marginTop: 2 },
   employeeTime: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
+
+  employeeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  employeeDuration: { fontSize: 12, color: '#28A745', marginTop: 2, fontWeight: '500' },
+  checkedInTotal: { fontSize: 14, color: '#007AFF', fontWeight: '600', marginBottom: 12 },
+  callBtn: {
+    backgroundColor: '#E8F4FD',
+    borderRadius: 8,
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkOutEmployeeBtn: {
+    backgroundColor: '#DC3545',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkOutEmployeeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
   contactBtn: {
     marginLeft: 8,
