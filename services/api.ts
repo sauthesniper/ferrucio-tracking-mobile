@@ -5,15 +5,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const PROD_URL = 'https://gps-tracking-api.code-envision.ro';
 const API_MODE_KEY = 'api_mode'; // 'prod' or 'local'
 
+// In standalone (production) builds there's no debuggerHost — default to prod
+const isStandalone = !Constants.expoConfig?.hostUri && !Constants.manifest2?.extra?.expoGo?.debuggerHost;
+
 // Cached mode to avoid async reads on every request
-let cachedMode: 'prod' | 'local' = 'local';
+let cachedMode: 'prod' | 'local' = isStandalone ? 'prod' : 'local';
 
 export async function loadApiMode(): Promise<'prod' | 'local'> {
   try {
     const stored = await AsyncStorage.getItem(API_MODE_KEY);
-    cachedMode = stored === 'prod' ? 'prod' : 'local';
+    if (stored === 'prod' || stored === 'local') {
+      cachedMode = stored;
+    }
+    // If nothing stored, keep the default (prod for standalone, local for dev)
   } catch {
-    cachedMode = 'local';
+    // keep default
   }
   return cachedMode;
 }
