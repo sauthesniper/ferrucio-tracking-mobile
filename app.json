@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CONI",
+    "name": "Pontaj Angajati",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,9 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow CONI to use your location while using the app.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow CONI to use your location for continuous tracking.",
-        "NSLocationAlwaysUsageDescription": "Allow CONI to use your location in the background.",
+        "NSLocationWhenInUseUsageDescription": "Allow Pontaj Angajati to use your location while using the app.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Pontaj Angajati to use your location for continuous tracking.",
+        "NSLocationAlwaysUsageDescription": "Allow Pontaj Angajati to use your location in the background.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -60,9 +60,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow CONI to use your location for tracking.",
-          "locationAlwaysPermission": "Allow CONI to use your location in the background for continuous tracking.",
-          "locationWhenInUsePermission": "Allow CONI to use your location while using the app.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Pontaj Angajati to use your location for tracking.",
+          "locationAlwaysPermission": "Allow Pontaj Angajati to use your location in the background for continuous tracking.",
+          "locationWhenInUsePermission": "Allow Pontaj Angajati to use your location while using the app.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }

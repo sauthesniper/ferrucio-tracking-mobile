@@ -277,6 +277,12 @@ export default function QRScannerScreen() {
 
 function mapErrorMessage(errData: { error?: string; code?: string }): string {
   const code = errData.code;
+  if (code === 'OUTSIDE_GREEN_ZONE') {
+    return t('geofence.outsideZone');
+  }
+  if (code === 'MISSING_GPS_COORDINATES') {
+    return t('geofence.missingGps');
+  }
   if (code === 'QR_EXPIRED' || errData.error?.toLowerCase().includes('expired')) {
     return t('qrScanner.qrExpired');
   }

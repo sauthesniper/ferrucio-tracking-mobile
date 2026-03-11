@@ -1,5 +1,6 @@
 {
   "dashboard.title": "Tablou de bord",
+  "dashboard.welcome": "Bun venit, {name}",
   "dashboard.loading": "Se încarcă tabloul de bord...",
   "dashboard.refresh": "Reîmprospătează tabloul de bord",
   "dashboard.checkedIn": "Pontat — La lucru",
@@ -12,6 +13,8 @@
   "dashboard.hoursToday": "Ore azi",
   "dashboard.checkIn": "Pontare intrare",
   "dashboard.checkOut": "Pontare ieșire",
+  "dashboard.callLeader": "Sună lider",
+  "dashboard.messageLeader": "Mesaj lider",
 
   "leader.title": "Panou Lider",
   "leader.startSession": "Pornește o sesiune",
@@ -52,8 +55,14 @@
   "leader.checkOutFailed": "Depontarea a eșuat",
   "leader.callEmployee": "Sună angajatul",
   "leader.noPhone": "Fără telefon",
+  "leader.viewEmployees": "Vezi angajați",
+  "leader.recentEmployees": "Angajați pontați (ultimele 5 zile)",
+  "leader.noRecentEmployees": "Niciun angajat pontat în ultimele 5 zile.",
+  "leader.checkInEmployee": "Pontare",
+  "leader.smsEmployee": "Mesaj",
+  "leader.callEmployeeBtn": "Sună",
 
-  "login.title": "CONI",
+  "login.title": "PONTAJ ANGAJATI",
   "login.local": "LOCAL",
   "login.proxyProd": "PROXY PROD",
   "login.modeNgrok": "ngrok (orice rețea)",
@@ -151,6 +160,9 @@
   "common.delete": "Șterge",
   "common.back": "Înapoi",
   "common.networkError": "Eroare de rețea. Încearcă din nou.",
+
+  "geofence.outsideZone": "Nu te afli în zona permisă. Verifică locația GPS.",
+  "geofence.missingGps": "Coordonatele GPS nu sunt disponibile. Așteaptă câteva secunde și încearcă din nou.",
 
   "notification.zoneExit": "{name} a părăsit zona verde la {time}"
 }

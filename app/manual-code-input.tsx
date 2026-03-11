@@ -187,6 +187,10 @@ export default function ManualCodeInputScreen() {
 
 function mapErrorMessage(errData: { error?: string; code?: string }): string {
   switch (errData.code) {
+    case 'OUTSIDE_GREEN_ZONE':
+      return t('geofence.outsideZone');
+    case 'MISSING_GPS_COORDINATES':
+      return t('geofence.missingGps');
     case 'INVALID_NUMERIC_CODE':
       return t('manualCode.invalidCode');
     case 'QR_EXPIRED':

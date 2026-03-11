@@ -37,6 +37,15 @@ interface Employee {
   duration_minutes?: number;
 }
 
+interface RecentEmployee {
+  id: number;
+  username: string;
+  phone: string | null;
+  role: string;
+  isCheckedIn: boolean;
+  checkInAt: string | null;
+}
+
 interface LeaderInfo {
   id: number;
   name: string;
@@ -53,7 +62,6 @@ export default function LeaderScreen() {
   const [sessionType, setSessionType] = useState<'check_in' | 'check_out' | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selfCheckLoading, setSelfCheckLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Transfer modal state
@@ -62,9 +70,13 @@ export default function LeaderScreen() {
   const [loadingLeaders, setLoadingLeaders] = useState(false);
   const [transferring, setTransferring] = useState(false);
 
+  // Recent employees modal state
+  const [showEmployeesModal, setShowEmployeesModal] = useState(false);
+  const [recentEmployees, setRecentEmployees] = useState<RecentEmployee[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Calculate work duration from check-in time to now
   const formatWorkDuration = (checkInAt?: string): string => {
     if (!checkInAt) return '—';
     const checkInTime = new Date(checkInAt).getTime();
@@ -75,7 +87,6 @@ export default function LeaderScreen() {
     return `${h}h ${m}m`;
   };
 
-  // Handle manual check-out for an employee
   const handleCheckOutEmployee = (emp: Employee) => {
     Alert.alert(
       t('leader.checkOutConfirmTitle'),
@@ -105,21 +116,71 @@ export default function LeaderScreen() {
     );
   };
 
-  // Handle direct phone call to employee
-  const handleCallEmployee = (emp: Employee) => {
-    if (emp.phone) {
-      Linking.openURL(`tel:${emp.phone}`);
+  const handleCallEmployee = (emp: { phone?: string | null }) => {
+    if (emp.phone) Linking.openURL(`tel:${emp.phone}`);
+  };
+
+  const handleSmsEmployee = (emp: { phone?: string | null }) => {
+    if (emp.phone) Linking.openURL(`sms:${emp.phone}`);
+  };
+
+  // Manual check-in for a recent employee
+  const handleManualCheckIn = async (emp: RecentEmployee) => {
+    if (!token) return;
+    try {
+      const res = await apiPost('/api/attendance/manual-check-in', { employee_id: emp.id, reason: 'Pontare manuală din lista angajați' }, token);
+      if (res.ok) {
+        Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.username));
+        fetchRecentEmployees();
+      } else {
+        const errData = res.data as unknown as { error?: string };
+        Alert.alert(t('common.error'), errData.error ?? t('common.error'));
+      }
+    } catch {
+      Alert.alert(t('common.error'), t('common.networkError'));
     }
   };
 
-  // Refresh attendance status when tab is focused
+  // Manual check-out for a recent employee
+  const handleManualCheckOut = async (emp: RecentEmployee) => {
+    if (!token) return;
+    try {
+      const res = await apiPost('/api/attendance/manual-check-out', { employee_id: emp.id, reason: 'Depontare manuală din lista angajați' }, token);
+      if (res.ok) {
+        Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.username));
+        fetchRecentEmployees();
+      } else {
+        const errData = res.data as unknown as { error?: string };
+        Alert.alert(t('common.error'), errData.error ?? t('common.error'));
+      }
+    } catch {
+      Alert.alert(t('common.error'), t('common.networkError'));
+    }
+  };
+
+  const fetchRecentEmployees = useCallback(async () => {
+    if (!token) return;
+    setLoadingRecent(true);
+    try {
+      const res = await apiGet<{ employees: RecentEmployee[] }>('/api/attendance/recent-employees?days=5', token);
+      if (res.ok) {
+        setRecentEmployees(res.data.employees ?? []);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingRecent(false); }
+  }, [token]);
+
+  const openEmployeesModal = () => {
+    setShowEmployeesModal(true);
+    fetchRecentEmployees();
+  };
+
   useFocusEffect(
     useCallback(() => {
       refetchAttendance();
     }, [refetchAttendance])
   );
 
-  // Poll employees when session is active
   const pollEmployees = useCallback(async () => {
     if (!session || !token) return;
     try {
@@ -128,11 +189,18 @@ export default function LeaderScreen() {
         token,
       );
       if (res.ok) {
-        setEmployees(res.data.employees ?? []);
+        const mapped = (res.data.employees ?? []).map((e: any) => ({
+          id: e.employee_id ?? e.id,
+          name: e.employee_name ?? e.name ?? '',
+          unique_code: e.unique_code,
+          phone: e.phone,
+          check_in_at: e.check_in_at,
+          check_out_at: e.check_out_at,
+          duration_minutes: e.duration_minutes,
+        }));
+        setEmployees(mapped);
       }
-    } catch {
-      // Silently ignore polling errors
-    }
+    } catch { /* ignore */ }
   }, [session, token]);
 
   useEffect(() => {
@@ -141,10 +209,7 @@ export default function LeaderScreen() {
       pollRef.current = setInterval(pollEmployees, 5000);
     }
     return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
   }, [session, pollEmployees]);
 
@@ -203,7 +268,6 @@ export default function LeaderScreen() {
     try {
       const res = await apiGet<{ users: LeaderInfo[] }>('/api/users/search?q=&role=leader', token);
       if (res.ok) {
-        // Filter out current user
         setLeaders((res.data.users ?? []).filter((l) => l.id !== user?.id));
       } else {
         setLeaders([]);
@@ -227,7 +291,6 @@ export default function LeaderScreen() {
       if (res.ok) {
         Alert.alert(t('common.success'), t('leader.transferSuccess'));
         setShowTransferModal(false);
-        // Clear session since we no longer own it
         setSession(null);
         setSessionType(null);
         setEmployees([]);
@@ -242,34 +305,6 @@ export default function LeaderScreen() {
     }
   };
 
-  const handleSelfCheck = async () => {
-    if (!token) return;
-    setSelfCheckLoading(true);
-    try {
-      if (isCheckedIn) {
-        const res = await apiPost('/api/attendance/self-check-out', {}, token);
-        if (res.ok) {
-          await refetchAttendance();
-        } else {
-          const errData = res.data as unknown as { error?: string };
-          Alert.alert(t('common.error'), errData.error ?? 'Self check-out failed');
-        }
-      } else {
-        const res = await apiPost('/api/attendance/self-check-in', {}, token);
-        if (res.ok) {
-          await refetchAttendance();
-        } else {
-          const errData = res.data as unknown as { error?: string };
-          Alert.alert(t('common.error'), errData.error ?? 'Self check-in failed');
-        }
-      }
-    } catch {
-      Alert.alert(t('common.error'), t('common.networkError'));
-    } finally {
-      setSelfCheckLoading(false);
-    }
-  };
-
   const endSession = () => {
     if (sessionType === 'check_out' && employees.some(e => !e.check_out_at)) {
       Alert.alert(t('leader.warningEndSession'), t('leader.warningEndSessionMsg'), [
@@ -277,11 +312,7 @@ export default function LeaderScreen() {
         {
           text: t('common.confirm'),
           style: 'destructive',
-          onPress: () => {
-            setSession(null);
-            setSessionType(null);
-            setEmployees([]);
-          },
+          onPress: () => { setSession(null); setSessionType(null); setEmployees([]); },
         },
       ]);
       return;
@@ -290,6 +321,96 @@ export default function LeaderScreen() {
     setSessionType(null);
     setEmployees([]);
   };
+
+  // Phone icon SVG path
+  const phonePath = "M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z";
+  const smsPath = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z";
+
+  // --- Recent Employees Modal ---
+  const renderEmployeesModal = () => (
+    <Modal
+      visible={showEmployeesModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowEmployeesModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+          <Text style={styles.modalTitle}>{t('leader.recentEmployees')}</Text>
+
+          {loadingRecent ? (
+            <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 24 }} />
+          ) : recentEmployees.length === 0 ? (
+            <Text style={styles.emptyText}>{t('leader.noRecentEmployees')}</Text>
+          ) : (
+            <FlatList
+              data={recentEmployees}
+              keyExtractor={(item) => item.id.toString()}
+              style={{ maxHeight: 500 }}
+              renderItem={({ item }) => (
+                <View style={styles.recentEmpRow}>
+                  <View style={styles.recentEmpInfo}>
+                    <Text style={styles.recentEmpName}>{item.username}</Text>
+                    <Text style={styles.recentEmpPhone}>{item.phone ?? '—'}</Text>
+                  </View>
+                  <View style={styles.recentEmpActions}>
+                    {item.phone ? (
+                      <>
+                        <TouchableOpacity
+                          style={styles.smallActionBtn}
+                          onPress={() => handleCallEmployee(item)}
+                          accessibilityLabel={t('leader.callEmployeeBtn')}
+                          accessibilityRole="button"
+                        >
+                          <Svg width={16} height={16} viewBox="0 0 24 24"><Path d={phonePath} fill="#28A745" /></Svg>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.smallActionBtn}
+                          onPress={() => handleSmsEmployee(item)}
+                          accessibilityLabel={t('leader.smsEmployee')}
+                          accessibilityRole="button"
+                        >
+                          <Svg width={16} height={16} viewBox="0 0 24 24"><Path d={smsPath} fill="#007AFF" /></Svg>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                    {item.isCheckedIn ? (
+                      <TouchableOpacity
+                        style={styles.depontBtn}
+                        onPress={() => handleManualCheckOut(item)}
+                        accessibilityLabel={t('leader.checkOutEmployee')}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.depontBtnText}>{t('leader.checkOutEmployee')}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.pontBtn}
+                        onPress={() => handleManualCheckIn(item)}
+                        accessibilityLabel={t('leader.checkInEmployee')}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pontBtnText}>{t('leader.checkInEmployee')}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+            />
+          )}
+
+          <TouchableOpacity
+            style={styles.modalCloseBtn}
+            onPress={() => setShowEmployeesModal(false)}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <Text style={styles.modalCloseBtnText}>{t('leader.cancel')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   // --- No active session view ---
   if (!session) {
@@ -352,18 +473,15 @@ export default function LeaderScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[isCheckedIn ? styles.checkOutBtn : styles.checkInBtn, selfCheckLoading && { opacity: 0.6 }]}
-          onPress={handleSelfCheck}
-          disabled={selfCheckLoading}
-          accessibilityLabel={isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
+          style={styles.viewEmployeesBtn}
+          onPress={openEmployeesModal}
+          accessibilityLabel={t('leader.viewEmployees')}
           accessibilityRole="button"
         >
-          {selfCheckLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.btnText}>{isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}</Text>
-          )}
+          <Text style={styles.viewEmployeesBtnText}>{t('leader.viewEmployees')}</Text>
         </TouchableOpacity>
+
+        {renderEmployeesModal()}
       </ScrollView>
     );
   }
@@ -430,6 +548,15 @@ export default function LeaderScreen() {
           <Text style={styles.manualBtnText}>{t('leader.manualCheckInOut')}</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.viewEmployeesBtn}
+          onPress={openEmployeesModal}
+          accessibilityLabel={t('leader.viewEmployees')}
+          accessibilityRole="button"
+        >
+          <Text style={styles.viewEmployeesBtnText}>{t('leader.viewEmployees')}</Text>
+        </TouchableOpacity>
+
         {/* Employee list */}
         <View style={styles.employeeSection}>
           <Text style={styles.sectionTitle}>
@@ -460,7 +587,6 @@ export default function LeaderScreen() {
                       : ''}
                 </Text>
                 <View style={styles.employeeActions}>
-                  {/* Direct phone call button */}
                   {emp.phone ? (
                     <TouchableOpacity
                       style={styles.callBtn}
@@ -468,10 +594,9 @@ export default function LeaderScreen() {
                       accessibilityLabel={t('leader.callEmployee') + ` ${emp.name}`}
                       accessibilityRole="button"
                     >
-                      <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z" fill="#007AFF" /></Svg>
+                      <Svg width={18} height={18} viewBox="0 0 24 24"><Path d={phonePath} fill="#007AFF" /></Svg>
                     </TouchableOpacity>
                   ) : null}
-                  {/* Check-out (depontare) button — only for active sessions */}
                   {!emp.check_out_at && (
                     <TouchableOpacity
                       style={styles.checkOutEmployeeBtn}
@@ -487,22 +612,6 @@ export default function LeaderScreen() {
             ))
           )}
         </View>
-
-        <TouchableOpacity
-          style={[isCheckedIn ? styles.endSessionBtn : styles.checkInBtn, selfCheckLoading && { opacity: 0.6 }]}
-          onPress={handleSelfCheck}
-          disabled={selfCheckLoading}
-          accessibilityLabel={isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
-          accessibilityRole="button"
-        >
-          {selfCheckLoading ? (
-            <ActivityIndicator color={isCheckedIn ? '#DC3545' : '#fff'} />
-          ) : (
-            <Text style={isCheckedIn ? styles.endSessionBtnText : styles.btnText}>
-              {isCheckedIn ? t('leader.selfCheckOut') : t('leader.selfCheckIn')}
-            </Text>
-          )}
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.endSessionBtn}
@@ -565,6 +674,8 @@ export default function LeaderScreen() {
           </View>
         </View>
       </Modal>
+
+      {renderEmployeesModal()}
     </View>
   );
 }
@@ -583,155 +694,65 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 20, fontWeight: '600', color: '#333', marginBottom: 8 },
   cardDesc: { fontSize: 14, color: '#666', marginBottom: 20 },
 
-  checkInBtn: {
-    backgroundColor: '#28A745',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  checkOutBtn: {
-    backgroundColor: '#DC3545',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-  },
+  checkInBtn: { backgroundColor: '#28A745', borderRadius: 8, padding: 16, alignItems: 'center', marginBottom: 12 },
+  checkOutBtn: { backgroundColor: '#DC3545', borderRadius: 8, padding: 16, alignItems: 'center' },
   btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 
-  manualBtn: {
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  manualBtn: { borderWidth: 1, borderColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 12 },
   manualBtnText: { color: '#007AFF', fontSize: 16, fontWeight: '600' },
 
-  qrCard: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  viewEmployeesBtn: { backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 16 },
+  viewEmployeesBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  qrCard: { backgroundColor: '#F8F9FA', borderRadius: 12, padding: 24, alignItems: 'center', marginBottom: 16 },
   qrLabel: { fontSize: 16, color: '#666', marginBottom: 16 },
-  qrContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  numericCode: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    letterSpacing: 4,
-    marginBottom: 8,
-    fontVariant: ['tabular-nums'],
-  },
+  qrContainer: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
+  numericCode: { fontSize: 36, fontWeight: 'bold', color: '#007AFF', letterSpacing: 4, marginBottom: 8, fontVariant: ['tabular-nums'] },
   expiresText: { fontSize: 13, color: '#999' },
 
   actionRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  actionBtn: {
-    flex: 1,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-  },
+  actionBtn: { flex: 1, backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center' },
   actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
   employeeSection: { marginTop: 8, marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 12 },
   emptyText: { fontSize: 14, color: '#999', textAlign: 'center', paddingVertical: 16 },
 
-  employeeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 8,
-  },
+  employeeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F0F0F0', borderRadius: 8, padding: 14, marginBottom: 8 },
   employeeName: { fontSize: 16, fontWeight: '500', color: '#333' },
   employeeCode: { fontSize: 13, color: '#666', marginTop: 2 },
   employeeTime: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
-
-  employeeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginLeft: 8,
-  },
+  employeeActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
   employeeDuration: { fontSize: 12, color: '#28A745', marginTop: 2, fontWeight: '500' },
   checkedInTotal: { fontSize: 14, color: '#007AFF', fontWeight: '600', marginBottom: 12 },
-  callBtn: {
-    backgroundColor: '#E8F4FD',
-    borderRadius: 8,
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkOutEmployeeBtn: {
-    backgroundColor: '#DC3545',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  callBtn: { backgroundColor: '#E8F4FD', borderRadius: 8, padding: 8, justifyContent: 'center', alignItems: 'center' },
+  checkOutEmployeeBtn: { backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' },
   checkOutEmployeeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
-  contactBtn: {
-    marginLeft: 8,
-    backgroundColor: '#E8F4FD',
-    borderRadius: 8,
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  contactBtnText: { fontSize: 18 },
-
-  endSessionBtn: {
-    borderWidth: 1,
-    borderColor: '#DC3545',
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
+  endSessionBtn: { borderWidth: 1, borderColor: '#DC3545', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 32 },
   endSessionBtnText: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
 
-  // Transfer modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 24,
-    maxHeight: '70%',
-  },
+  // Recent employees modal
+  recentEmpRow: { backgroundColor: '#F8F9FA', borderRadius: 8, padding: 14, marginBottom: 8 },
+  recentEmpInfo: { marginBottom: 10 },
+  recentEmpName: { fontSize: 17, fontWeight: '700', color: '#333' },
+  recentEmpPhone: { fontSize: 14, color: '#666', marginTop: 2 },
+  recentEmpActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  smallActionBtn: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center' },
+  pontBtn: { backgroundColor: '#28A745', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 12 },
+  pontBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  depontBtn: { backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 12 },
+  depontBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, maxHeight: '70%' },
   modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 8 },
   modalDesc: { fontSize: 14, color: '#666', marginBottom: 16 },
   leaderList: { maxHeight: 300 },
-  leaderRow: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-  },
+  leaderRow: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 16, marginBottom: 8 },
   leaderName: { fontSize: 16, fontWeight: '600', color: '#333' },
   leaderUsername: { fontSize: 13, color: '#666', marginTop: 2 },
-  modalCloseBtn: {
-    marginTop: 16,
-    padding: 14,
-    alignItems: 'center',
-  },
+  modalCloseBtn: { marginTop: 16, padding: 14, alignItems: 'center' },
   modalCloseBtnText: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
 });
