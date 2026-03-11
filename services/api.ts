@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const NGROK_URL = 'https://relevant-hermit-pretty.ngrok-free.app';
+const PROD_URL = 'https://gps-tracking-api.code-envision.ro';
 const API_MODE_KEY = 'api_mode'; // 'prod' or 'local'
 
 // Cached mode to avoid async reads on every request
@@ -38,7 +38,7 @@ function getLocalBaseUrl(): string {
 }
 
 function getApiBaseUrl(): string {
-  return cachedMode === 'prod' ? NGROK_URL : getLocalBaseUrl();
+  return cachedMode === 'prod' ? PROD_URL : getLocalBaseUrl();
 }
 
 interface ApiResponse<T = unknown> {
