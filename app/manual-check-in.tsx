@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useAuth } from '@/context/auth-context';
 import { apiGet, apiPost } from '@/services/api';
 import { useTranslation } from '@/i18n';
@@ -37,7 +39,10 @@ export default function ManualCheckInScreen() {
 
   // Form fields
   const [reason, setReason] = useState('');
-  const [startTime, setStartTime] = useState('');
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -73,7 +78,6 @@ export default function ManualCheckInScreen() {
     setSelectedEmployee(null);
     setError(null);
     setSuccess(null);
-    // Debounced search — trigger on every change for simplicity
     searchEmployees(text);
   };
 
@@ -81,6 +85,20 @@ export default function ManualCheckInScreen() {
     setSelectedEmployee(emp);
     setQuery(emp.name);
     setResults([]);
+  };
+
+  const onStartDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowStartPicker(Platform.OS === 'ios');
+    if (selectedDate) setStartDate(selectedDate);
+  };
+
+  const onEndDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowEndPicker(Platform.OS === 'ios');
+    if (selectedDate) setEndDate(selectedDate);
+  };
+
+  const formatDateTime = (date: Date) => {
+    return date.toLocaleString();
   };
 
   const handleSubmit = async () => {
@@ -94,10 +112,8 @@ export default function ManualCheckInScreen() {
         const body: Record<string, unknown> = {
           employee_id: selectedEmployee.id,
           reason: reason || undefined,
+          start_time: startDate.toISOString(),
         };
-        if (startTime.trim()) {
-          body.start_time = startTime.trim();
-        }
         const res = await apiPost<{ attendanceId: number }>(
           '/api/attendance/manual-check-in',
           body,
@@ -114,6 +130,7 @@ export default function ManualCheckInScreen() {
         const body: Record<string, unknown> = {
           employee_id: selectedEmployee.id,
           reason: reason || undefined,
+          end_time: endDate.toISOString(),
         };
         const res = await apiPost<{ message: string; duration: number }>(
           '/api/attendance/manual-check-out',
@@ -144,7 +161,8 @@ export default function ManualCheckInScreen() {
     setSelectedEmployee(null);
     setQuery('');
     setReason('');
-    setStartTime('');
+    setStartDate(new Date());
+    setEndDate(new Date());
     setResults([]);
   };
 
@@ -259,18 +277,49 @@ export default function ManualCheckInScreen() {
         </View>
       )}
 
-      {/* Start time (check-in only) */}
+      {/* DateTime picker for check-in mode (start time) */}
       {mode === 'check_in' && (
         <>
           <Text style={styles.label}>{t('manualCheckIn.startTime')}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder={t('manualCheckIn.startTimePlaceholder')}
-            placeholderTextColor="#999"
-            value={startTime}
-            onChangeText={setStartTime}
+          <TouchableOpacity
+            style={styles.datePickerBtn}
+            onPress={() => setShowStartPicker(true)}
             accessibilityLabel={t('manualCheckIn.startTime')}
-          />
+            accessibilityRole="button"
+          >
+            <Text style={styles.datePickerBtnText}>{formatDateTime(startDate)}</Text>
+          </TouchableOpacity>
+          {showStartPicker && (
+            <DateTimePicker
+              value={startDate}
+              mode="datetime"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onStartDateChange}
+            />
+          )}
+        </>
+      )}
+
+      {/* DateTime picker for check-out mode (end time) */}
+      {mode === 'check_out' && (
+        <>
+          <Text style={styles.label}>{t('manualCheckIn.endTime') ?? 'End Time'}</Text>
+          <TouchableOpacity
+            style={styles.datePickerBtn}
+            onPress={() => setShowEndPicker(true)}
+            accessibilityLabel={t('manualCheckIn.endTime') ?? 'End Time'}
+            accessibilityRole="button"
+          >
+            <Text style={styles.datePickerBtnText}>{formatDateTime(endDate)}</Text>
+          </TouchableOpacity>
+          {showEndPicker && (
+            <DateTimePicker
+              value={endDate}
+              mode="datetime"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onEndDateChange}
+            />
+          )}
         </>
       )}
 
@@ -343,6 +392,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
+
+  datePickerBtn: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    padding: 14,
+    backgroundColor: '#FAFAFA',
+  },
+  datePickerBtnText: { fontSize: 16, color: '#333' },
 
   resultsList: {
     backgroundColor: '#F8F9FA',

@@ -6,29 +6,109 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Switch,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
-import { loadApiMode, setApiMode, getApiMode } from '@/services/api';
 import { useTranslation } from '@/i18n';
 import { registerPushToken } from '@/services/push-token';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+
+/**
+ * AnimatedBackground — continuous red (#CC0000) → black (#000000) animated background.
+ * Uses multiple overlapping layers with animated translateY and opacity to simulate
+ * a moving gradient effect. Runs entirely on the native UI thread via reanimated
+ * worklets for smooth 60 FPS performance.
+ */
+function AnimatedBackground() {
+  const translateY = useSharedValue(0);
+  const opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    // Slow continuous vertical movement — runs on native thread
+    translateY.value = withRepeat(
+      withTiming(-200, { duration: 6000, easing: Easing.inOut(Easing.ease) }),
+      -1, // infinite
+      true // reverse
+    );
+    // Subtle opacity pulse for the red layer
+    opacity.value = withRepeat(
+      withTiming(0.7, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, [translateY, opacity]);
+
+  const animatedRedTop = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
+
+  const animatedRedBottom = useAnimatedStyle(() => ({
+    transform: [{ translateY: -translateY.value }],
+    opacity: opacity.value * 0.6,
+  }));
+
+  return (
+    <View style={bgStyles.container}>
+      {/* Base black layer */}
+      <View style={bgStyles.blackBase} />
+      {/* Animated red layer — top region */}
+      <Animated.View style={[bgStyles.redLayerTop, animatedRedTop]} />
+      {/* Animated red layer — bottom region */}
+      <Animated.View style={[bgStyles.redLayerBottom, animatedRedBottom]} />
+    </View>
+  );
+}
+
+const bgStyles = StyleSheet.create({
+  container: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  blackBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+  },
+  redLayerTop: {
+    position: 'absolute',
+    top: -100,
+    left: -50,
+    right: -50,
+    height: '60%',
+    borderRadius: 200,
+    backgroundColor: '#CC0000',
+  },
+  redLayerBottom: {
+    position: 'absolute',
+    bottom: -100,
+    left: -50,
+    right: -50,
+    height: '40%',
+    borderRadius: 200,
+    backgroundColor: '#CC0000',
+  },
+});
+
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, token: authToken } = useAuth();
+  const { loginWithCode, token: authToken } = useAuth();
   const { t } = useTranslation();
 
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [loginCode, setLoginCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isProd, setIsProd] = useState(false);
   const justLoggedIn = React.useRef(false);
-
-  useEffect(() => {
-    loadApiMode().then((mode) => setIsProd(mode === 'prod'));
-  }, []);
 
   // Register push token after successful login
   useEffect(() => {
@@ -38,17 +118,13 @@ export default function LoginScreen() {
     }
   }, [authToken]);
 
-  const toggleMode = async (value: boolean) => {
-    setIsProd(value);
-    await setApiMode(value ? 'prod' : 'local');
-  };
-
   const handleLogin = async () => {
     setError('');
+    if (!loginCode.trim()) return;
     setLoading(true);
     try {
       justLoggedIn.current = true;
-      await login(username, password);
+      await loginWithCode(loginCode.trim());
       router.replace('/(tabs)');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed';
@@ -59,109 +135,129 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{t('login.title')}</Text>
-
-      {/* Backend URL switch */}
-      <View style={styles.switchRow}>
-        <Text style={[styles.switchLabel, !isProd && styles.switchLabelActive]}>{t('login.local')}</Text>
-        <Switch
-          value={isProd}
-          onValueChange={toggleMode}
-          trackColor={{ false: '#d1d5db', true: '#007AFF' }}
-          thumbColor="#fff"
-        />
-        <Text style={[styles.switchLabel, isProd && styles.switchLabelActive]}>{t('login.proxyProd')}</Text>
-      </View>
-      <Text style={styles.modeHint}>
-        {isProd ? t('login.modeNgrok') : t('login.modeLocal')}
-      </Text>
-
-      {error !== '' && <Text style={styles.error}>{error}</Text>}
-
-      <TextInput
-        style={styles.input}
-        placeholder={t('login.username')}
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        editable={!loading}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder={t('login.password')}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!loading}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleLogin}
-        disabled={loading}
-        accessibilityRole="button"
-        accessibilityLabel={t('login.submit')}
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <AnimatedBackground />
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {loading ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color="#fff" size="small" />
-            <Text style={styles.buttonText}>{t('login.loggingIn')}</Text>
-          </View>
-        ) : (
-          <Text style={styles.buttonText}>{t('login.submit')}</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+        <View style={styles.container}>
+          <Image
+            source={require('@/assets/images/cropped-fg-logo-1-1.png')}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="Feruccio logo"
+          />
+          <Text style={styles.brandTitle}>Feruccio</Text>
+
+          <Text style={styles.title}>{t('login.title')}</Text>
+
+          {error !== '' && <Text style={styles.error}>{error}</Text>}
+
+          <TextInput
+            style={styles.input}
+            placeholder={t('login.loginCodePlaceholder')}
+            placeholderTextColor="rgba(255,255,255,0.5)"
+            value={loginCode}
+            onChangeText={setLoginCode}
+            autoCapitalize="none"
+            editable={!loading}
+            accessibilityLabel={t('login.loginCodePlaceholder')}
+          />
+
+          <TouchableOpacity
+            style={[styles.button, (loading || !loginCode.trim()) && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading || !loginCode.trim()}
+            accessibilityRole="button"
+            accessibilityLabel={t('login.submit')}
+          >
+            {loading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.buttonText}>{t('login.loggingIn')}</Text>
+              </View>
+            ) : (
+              <Text style={styles.buttonText}>{t('login.submit')}</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => router.push('/login-otp')}
+            disabled={loading}
+            accessibilityRole="link"
+            accessibilityLabel={t('login.otpLink')}
+          >
+            <Text style={styles.linkText}>{t('login.otpLink')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => {
+              router.push('/qr-login' as never);
+            }}
+            disabled={loading}
+            accessibilityRole="link"
+            accessibilityLabel={t('login.qrLink')}
+          >
+            <Text style={styles.linkText}>{t('login.qrLink')}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   container: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 32,
-    backgroundColor: '#fff',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  brandTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 24,
+    color: '#FF4444',
   },
   title: {
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 24,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginBottom: 4,
-  },
-  switchLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#9ca3af',
-  },
-  switchLabelActive: {
-    color: '#007AFF',
-  },
-  modeHint: {
-    textAlign: 'center',
-    fontSize: 11,
-    color: '#9ca3af',
-    marginBottom: 20,
+    color: '#FFFFFF',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: 'rgba(255,255,255,0.3)',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
     marginBottom: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    color: '#FFFFFF',
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#CC0000',
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
@@ -181,9 +277,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   error: {
-    color: '#d32f2f',
+    color: '#FF6B6B',
     textAlign: 'center',
     marginBottom: 14,
     fontSize: 14,
+  },
+  linkButton: {
+    marginTop: 18,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#FF8888',
+    fontSize: 15,
+    textDecorationLine: 'underline',
   },
 });

@@ -21,6 +21,7 @@ const MAPPING = {
   'location.fill': 'location-on',
   'gearshape.fill': 'settings',
   'shield.fill': 'shield',
+  'person.fill': 'person',
 } as IconMapping;
 
 /**

@@ -332,19 +332,29 @@ export default function LeaderScreen() {
       visible={showEmployeesModal}
       transparent
       animationType="slide"
-      onRequestClose={() => setShowEmployeesModal(false)}
+      onRequestClose={() => {}}
     >
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-          <Text style={styles.modalTitle}>{t('leader.recentEmployees')}</Text>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{t('leader.recentEmployees')}</Text>
+            <TouchableOpacity
+              style={styles.modalCloseX}
+              onPress={() => setShowEmployeesModal(false)}
+              accessibilityLabel="Close"
+              accessibilityRole="button"
+            >
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
+          </View>
 
           {loadingRecent ? (
             <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 24 }} />
-          ) : recentEmployees.length === 0 ? (
+          ) : recentEmployees.filter(e => e.id !== user?.id).length === 0 ? (
             <Text style={styles.emptyText}>{t('leader.noRecentEmployees')}</Text>
           ) : (
             <FlatList
-              data={recentEmployees}
+              data={recentEmployees.filter(e => e.id !== user?.id)}
               keyExtractor={(item) => item.id.toString()}
               style={{ maxHeight: 500 }}
               renderItem={({ item }) => (
@@ -747,7 +757,10 @@ const styles = StyleSheet.create({
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, maxHeight: '70%' },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 8 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalCloseX: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
+  modalCloseXText: { fontSize: 18, color: '#333', fontWeight: '600' },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', flex: 1 },
   modalDesc: { fontSize: 14, color: '#666', marginBottom: 16 },
   leaderList: { maxHeight: 300 },
   leaderRow: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 16, marginBottom: 8 },

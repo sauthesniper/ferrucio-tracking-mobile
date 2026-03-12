@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@/context/auth-context';
 import { useAttendance } from '@/hooks/use-attendance';
 import { useTelemetry } from '@/hooks/use-telemetry';
-import { apiGet } from '@/services/api';
+import { apiGet, apiPost } from '@/services/api';
 import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from '@/i18n';
 
@@ -46,6 +46,11 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selfLoading, setSelfLoading] = useState(false);
+  const [selfSuccess, setSelfSuccess] = useState<string | null>(null);
+  const [selfError, setSelfError] = useState<string | null>(null);
+
+  const isLeader = user?.role === 'leader';
 
   const fetchDashboard = useCallback(async () => {
     if (!token) return;
@@ -89,6 +94,54 @@ export default function DashboardScreen() {
 
   const handleCheckIn = () => router.push('/qr-scanner' as any);
   const handleCheckOut = () => router.push('/qr-scanner' as any);
+
+  const handleSelfCheckIn = async () => {
+    setSelfLoading(true);
+    setSelfSuccess(null);
+    setSelfError(null);
+    try {
+      const res = await apiPost<{ attendanceId?: number; error?: string }>(
+        '/api/attendance/self-check-in',
+        {},
+        token
+      );
+      if (res.ok) {
+        setSelfSuccess('Pontare intrare reușită!');
+        await refetch();
+        await fetchDashboard();
+      } else {
+        setSelfError(res.data?.error ?? 'Eroare la pontare intrare');
+      }
+    } catch (e: unknown) {
+      setSelfError(e instanceof Error ? e.message : 'Eroare de rețea');
+    } finally {
+      setSelfLoading(false);
+    }
+  };
+
+  const handleSelfCheckOut = async () => {
+    setSelfLoading(true);
+    setSelfSuccess(null);
+    setSelfError(null);
+    try {
+      const res = await apiPost<{ error?: string }>(
+        '/api/attendance/self-check-out',
+        {},
+        token
+      );
+      if (res.ok) {
+        setSelfSuccess('Pontare ieșire reușită!');
+        await refetch();
+        await fetchDashboard();
+      } else {
+        setSelfError(res.data?.error ?? 'Eroare la pontare ieșire');
+      }
+    } catch (e: unknown) {
+      setSelfError(e instanceof Error ? e.message : 'Eroare de rețea');
+    } finally {
+      setSelfLoading(false);
+    }
+  };
 
   if (loading || statusLoading) {
     return (
@@ -253,13 +306,41 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.actionsContainer}>
+        {selfSuccess && (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>{selfSuccess}</Text>
+          </View>
+        )}
+        {selfError && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{selfError}</Text>
+          </View>
+        )}
         {!isCheckedIn ? (
-          <TouchableOpacity style={styles.checkInBtn} onPress={handleCheckIn} accessibilityRole="button">
-            <Text style={styles.btnText}>{t('dashboard.checkIn')}</Text>
+          <TouchableOpacity
+            style={[styles.checkInBtn, selfLoading && styles.btnDisabled]}
+            onPress={isLeader ? handleSelfCheckIn : handleCheckIn}
+            disabled={selfLoading}
+            accessibilityRole="button"
+          >
+            {selfLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>{t('dashboard.checkIn')}</Text>
+            )}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.checkOutBtn} onPress={handleCheckOut} accessibilityRole="button">
-            <Text style={styles.btnText}>{t('dashboard.checkOut')}</Text>
+          <TouchableOpacity
+            style={[styles.checkOutBtn, selfLoading && styles.btnDisabled]}
+            onPress={isLeader ? handleSelfCheckOut : handleCheckOut}
+            disabled={selfLoading}
+            accessibilityRole="button"
+          >
+            {selfLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>{t('dashboard.checkOut')}</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -312,5 +393,8 @@ const styles = StyleSheet.create({
   actionsContainer: { marginTop: 16 },
   checkInBtn: { backgroundColor: '#28A745', borderRadius: 8, padding: 16, alignItems: 'center' },
   checkOutBtn: { backgroundColor: '#DC3545', borderRadius: 8, padding: 16, alignItems: 'center' },
+  btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  successBox: { backgroundColor: '#D4EDDA', borderRadius: 8, padding: 16, marginBottom: 12 },
+  successText: { color: '#155724', fontSize: 15 },
 });

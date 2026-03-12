@@ -19,6 +19,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarShowLabel: false,
       }}>
       <Tabs.Screen
         name="dashboard"
@@ -37,7 +38,7 @@ export default function TabLayout() {
         name="leader"
         options={{
           title: 'Leader',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="shield.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
           href: isLeaderOrAdmin ? '/(tabs)/leader' : null,
         }}
       />
