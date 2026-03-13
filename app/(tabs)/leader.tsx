@@ -401,21 +401,31 @@ export default function LeaderScreen() {
     }
   };
 
-  const endSession = () => {
+  const endSession = async () => {
+    const doEnd = async () => {
+      if (session && token) {
+        try {
+          await apiPost(`/api/sessions/${session.sessionId}/end`, {}, token);
+        } catch { /* still clear local state even if API fails */ }
+      }
+      setSession(null);
+      setSessionType(null);
+      setEmployees([]);
+      setPendingActiveSession(null);
+    };
+
     if (sessionType === 'check_out' && employees.some(e => !e.check_out_at)) {
       Alert.alert(t('leader.warningEndSession'), t('leader.warningEndSessionMsg'), [
         { text: t('common.cancel'), style: 'cancel' },
         {
           text: t('common.confirm'),
           style: 'destructive',
-          onPress: () => { setSession(null); setSessionType(null); setEmployees([]); },
+          onPress: doEnd,
         },
       ]);
       return;
     }
-    setSession(null);
-    setSessionType(null);
-    setEmployees([]);
+    await doEnd();
   };
 
   // Phone icon SVG path
