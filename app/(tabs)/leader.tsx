@@ -75,6 +75,16 @@ export default function LeaderScreen() {
   const [recentEmployees, setRecentEmployees] = useState<RecentEmployee[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
 
+  // Session restore state
+  const [restoringSession, setRestoringSession] = useState(false);
+  const [pendingActiveSession, setPendingActiveSession] = useState<{
+    id: number;
+    type: 'check_in' | 'check_out';
+    qr_token: string;
+    numeric_code: string;
+    qr_expires_at: string;
+  } | null>(null);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const formatWorkDuration = (checkInAt?: string): string => {
@@ -181,6 +191,44 @@ export default function LeaderScreen() {
     }, [refetchAttendance])
   );
 
+  // Check for active session on mount (session restore)
+  useEffect(() => {
+    if (!token || !user) return;
+    // Don't check if we already have a session active in state
+    if (session) return;
+
+    let cancelled = false;
+
+    const checkActiveSession = async () => {
+      try {
+        const res = await apiGet<{ sessions: Array<{
+          id: number;
+          leader_id: number;
+          type: 'check_in' | 'check_out';
+          qr_token: string;
+          numeric_code: string;
+          qr_expires_at: string;
+          status: string;
+        }> }>('/api/sessions?status=active', token);
+
+        if (cancelled) return;
+
+        if (res.ok && res.data.sessions?.length > 0) {
+          // Find the first active session belonging to this leader
+          const activeSession = res.data.sessions.find(s => s.leader_id === user.id);
+          if (activeSession) {
+            setPendingActiveSession(activeSession);
+          }
+        }
+      } catch {
+        // Silently fail — show normal create buttons
+      }
+    };
+
+    checkActiveSession();
+    return () => { cancelled = true; };
+  }, [token, user, session]);
+
   const pollEmployees = useCallback(async () => {
     if (!session || !token) return;
     try {
@@ -212,6 +260,54 @@ export default function LeaderScreen() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
   }, [session, pollEmployees]);
+
+  const restoreActiveSession = async () => {
+    if (!pendingActiveSession || !token) return;
+    setRestoringSession(true);
+    setError(null);
+    try {
+      const s = pendingActiveSession;
+      const isQrExpired = new Date(s.qr_expires_at).getTime() < Date.now();
+
+      if (isQrExpired) {
+        // Auto-regenerate QR via invalidate endpoint
+        const res = await apiPost<{ qrToken: string; numericCode: string; expiresAt: string; sessionId: number }>(
+          `/api/sessions/${s.id}/invalidate`,
+          {},
+          token,
+        );
+        if (res.ok) {
+          setSession({
+            sessionId: s.id,
+            qrToken: res.data.qrToken,
+            numericCode: res.data.numericCode,
+            expiresAt: res.data.expiresAt,
+          });
+        } else {
+          // Even if invalidate fails, still restore with old data
+          setSession({
+            sessionId: s.id,
+            qrToken: s.qr_token,
+            numericCode: s.numeric_code,
+            expiresAt: s.qr_expires_at,
+          });
+        }
+      } else {
+        setSession({
+          sessionId: s.id,
+          qrToken: s.qr_token,
+          numericCode: s.numeric_code,
+          expiresAt: s.qr_expires_at,
+        });
+      }
+      setSessionType(s.type);
+      setPendingActiveSession(null);
+    } catch {
+      setError('Failed to restore session.');
+    } finally {
+      setRestoringSession(false);
+    }
+  };
 
   const startSession = async (type: 'check_in' | 'check_out') => {
     if (!token) return;
@@ -436,6 +532,31 @@ export default function LeaderScreen() {
           </View>
         )}
 
+        {pendingActiveSession ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {t('leader.activeSessionFound')}
+            </Text>
+            <TouchableOpacity
+              style={styles.restoreSessionBtn}
+              onPress={restoreActiveSession}
+              disabled={restoringSession}
+              accessibilityLabel="View active session"
+              accessibilityRole="button"
+            >
+              {restoringSession ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.btnText}>
+                  {t('leader.viewActiveSession').replace(
+                    '{type}',
+                    pendingActiveSession.type === 'check_in' ? 'check-in' : 'check-out'
+                  )}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('leader.startSession')}</Text>
           <Text style={styles.cardDesc}>
@@ -472,6 +593,7 @@ export default function LeaderScreen() {
             )}
           </TouchableOpacity>
         </View>
+        )}
 
         <TouchableOpacity
           style={styles.manualBtn}
@@ -706,6 +828,7 @@ const styles = StyleSheet.create({
 
   checkInBtn: { backgroundColor: '#28A745', borderRadius: 8, padding: 16, alignItems: 'center', marginBottom: 12 },
   checkOutBtn: { backgroundColor: '#DC3545', borderRadius: 8, padding: 16, alignItems: 'center' },
+  restoreSessionBtn: { backgroundColor: '#007AFF', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 12 },
   btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 
   manualBtn: { borderWidth: 1, borderColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 12 },

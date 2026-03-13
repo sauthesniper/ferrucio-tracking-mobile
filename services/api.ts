@@ -75,6 +75,37 @@ async function request<T>(
     );
   }
 
+  // Auto-refresh interceptor: on 401, attempt token refresh and retry
+  if (res.status === 401 && path !== '/api/auth/refresh') {
+    try {
+      // Lazy import to avoid circular dependency (auth-service imports from api)
+      const { refreshToken, clearRefreshToken } = await import('@/services/auth-service');
+      const refreshResult = await refreshToken();
+      if (refreshResult) {
+        // Store new JWT in SecureStore
+        if (Platform.OS === 'web') {
+          localStorage.setItem('auth_token', refreshResult.token);
+        } else {
+          const SecureStore = await import('expo-secure-store');
+          await SecureStore.setItemAsync('auth_token', refreshResult.token);
+        }
+        // Retry the original request with the new token
+        return request<T>(method, path, body, refreshResult.token);
+      } else {
+        // Refresh failed — clear tokens, let caller handle redirect to login
+        await clearRefreshToken();
+        if (Platform.OS === 'web') {
+          localStorage.removeItem('auth_token');
+        } else {
+          const SecureStore = await import('expo-secure-store');
+          await SecureStore.deleteItemAsync('auth_token');
+        }
+      }
+    } catch {
+      // If refresh attempt itself fails, fall through to return the 401 response
+    }
+  }
+
   let data: T;
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
@@ -88,6 +119,7 @@ async function request<T>(
 
   return { ok: res.ok, status: res.status, data };
 }
+
 
 export async function apiGet<T = unknown>(path: string, token?: string | null): Promise<ApiResponse<T>> {
   return request<T>('GET', path, undefined, token);

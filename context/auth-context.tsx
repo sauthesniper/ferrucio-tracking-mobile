@@ -11,7 +11,6 @@ import {
 } from '@/services/auth-service';
 
 const TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
 
 // expo-secure-store doesn't work on web — use localStorage as fallback
 const storage = {
@@ -143,13 +142,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const { token: newToken, refreshToken: refreshTkn, user: userInfo } = res.data;
-    await storage.setItem(TOKEN_KEY, newToken);
-    if (refreshTkn) {
-      await storeRefreshToken(refreshTkn);
-    }
-    setToken(newToken);
-    setUser({ id: userInfo.id, username: userInfo.username, role: userInfo.role });
-  }, []);
+    await setAuthState(newToken, refreshTkn ?? '', {
+      id: userInfo.id,
+      username: userInfo.username,
+      role: userInfo.role,
+    });
+  }, [setAuthState]);
 
   const loginWithOtp = useCallback(
     async (phone: string, code: string) => {

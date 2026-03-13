@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState, Linking } from 'react-native';
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import { Accelerometer, Gyroscope } from 'expo-sensors';
-import * as Battery from 'expo-battery';
 import * as Network from 'expo-network';
 import { useAuth } from '@/context/auth-context';
 import { apiPost } from '@/services/api';
@@ -14,7 +14,7 @@ import {
   purgeSyncedEntries,
 } from '@/services/telemetry-cache';
 
-const COLLECT_INTERVAL_MS = 30_000; // 30 seconds
+const BACKGROUND_LOCATION_TASK = 'background-location-task';
 const MAX_BACKOFF_MS = 60_000;
 const INITIAL_BACKOFF_MS = 1_000;
 
@@ -27,9 +27,40 @@ function uuidv4(): string {
   });
 }
 
+// ── Module-level background location task definition ──
+// TaskManager tasks must be defined at the top level, outside any component or hook.
+TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
+  if (error || !data) return;
+  const { locations } = data as { locations: Location.LocationObject[] };
+  if (!locations || locations.length === 0) return;
+
+  // Convert each received location into a TelemetryEntry and cache it.
+  // The hook's sync logic will pick these up and upload them.
+  const entries: TelemetryEntry[] = locations.map((loc) => ({
+    idempotency_key: uuidv4(),
+    latitude: loc.coords.latitude,
+    longitude: loc.coords.longitude,
+    speed: loc.coords.speed ?? null,
+    accel_x: 0,
+    accel_y: 0,
+    accel_z: 0,
+    gyro_x: 0,
+    gyro_y: 0,
+    gyro_z: 0,
+    screen_on: false,
+    battery_level: null,
+    signal_strength: null,
+    recorded_at: new Date(loc.timestamp).toISOString(),
+  }));
+
+  await cacheTelemetryEntries(entries);
+});
+
+
 /**
- * Hook that collects telemetry (GPS, sensors, battery, network) at 30s intervals
- * and uploads batches to the backend. Caches locally when offline and syncs on reconnect.
+ * Hook that collects telemetry (GPS, sensors, battery, network) using
+ * expo-location background tasks and uploads batches to the backend.
+ * Caches locally when offline and syncs on reconnect.
  *
  * @param active - Whether telemetry collection is active (tied to attendance session).
  * @param sessionId - The current attendance session ID (optional, for context).
@@ -44,14 +75,13 @@ export function useTelemetry(active: boolean, sessionId?: number | null) {
   const gyroRef = useRef({ x: 0, y: 0, z: 0 });
   const screenOnRef = useRef(true);
 
-  // Batch buffer
+  // Batch buffer (for foreground-enriched entries)
   const bufferRef = useRef<TelemetryEntry[]>([]);
 
   // Backoff state for retries
   const backoffRef = useRef(INITIAL_BACKOFF_MS);
 
-  // Interval / timer refs
-  const collectRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Timer refs
   const syncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { tokenRef.current = token; }, [token]);
@@ -116,51 +146,6 @@ export function useTelemetry(active: boolean, sessionId?: number | null) {
     }
   }, [uploadBatch]);
 
-  /** Collect a single telemetry reading and add to buffer. */
-  const collectReading = useCallback(async () => {
-    if (!activeRef.current) return;
-
-    try {
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      let batteryLevel: number | null = null;
-      try {
-        batteryLevel = await Battery.getBatteryLevelAsync();
-      } catch { /* not available on all devices */ }
-
-      let signalStrength: number | null = null;
-      try {
-        const netState = await Network.getNetworkStateAsync();
-        // expo-network doesn't expose signal strength directly;
-        // use a simple heuristic: 1.0 if connected, 0.0 if not
-        signalStrength = netState.isConnected ? 1.0 : 0.0;
-      } catch { /* noop */ }
-
-      const entry: TelemetryEntry = {
-        idempotency_key: uuidv4(),
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        speed: loc.coords.speed ?? null,
-        accel_x: accelRef.current.x,
-        accel_y: accelRef.current.y,
-        accel_z: accelRef.current.z,
-        gyro_x: gyroRef.current.x,
-        gyro_y: gyroRef.current.y,
-        gyro_z: gyroRef.current.z,
-        screen_on: screenOnRef.current,
-        battery_level: batteryLevel,
-        signal_strength: signalStrength,
-        recorded_at: new Date(loc.timestamp).toISOString(),
-      };
-
-      bufferRef.current.push(entry);
-    } catch {
-      // Location unavailable — skip this reading
-    }
-  }, []);
-
   /** Flush the buffer: try to upload, cache on failure. */
   const flushBuffer = useCallback(async () => {
     const entries = bufferRef.current.splice(0);
@@ -175,48 +160,97 @@ export function useTelemetry(active: boolean, sessionId?: number | null) {
     if (isOnline) {
       const ok = await uploadBatch(entries);
       if (ok) {
-        // Successfully uploaded — also try syncing any previously cached entries
         backoffRef.current = INITIAL_BACKOFF_MS;
         syncCached();
       } else {
-        // Upload failed — cache for later
         await cacheTelemetryEntries(entries);
         const delay = backoffRef.current;
         backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
         syncRef.current = setTimeout(syncCached, delay);
       }
     } else {
-      // Offline — cache locally
       await cacheTelemetryEntries(entries);
     }
   }, [uploadBatch, syncCached]);
 
-  // Main collection loop
+  // ── Main effect: start/stop background location updates ──
   useEffect(() => {
     if (!active) {
-      // Stop: flush remaining buffer and clean up
+      // Stop: flush remaining buffer, stop location updates, clean up timers
       flushBuffer();
-      if (collectRef.current) { clearInterval(collectRef.current); collectRef.current = null; }
+      Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
+        .then((started) => {
+          if (started) {
+            return Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+          }
+        })
+        .catch(() => { /* task may not be registered yet */ });
       if (syncRef.current) { clearTimeout(syncRef.current); syncRef.current = null; }
       return;
     }
 
-    // Collect immediately, then at interval
-    collectReading();
+    let cancelled = false;
 
-    collectRef.current = setInterval(async () => {
-      await collectReading();
-      await flushBuffer();
-    }, COLLECT_INTERVAL_MS);
+    const startBackgroundLocation = async () => {
+      try {
+        // Request foreground permission first (required before background)
+        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+        if (fgStatus !== 'granted') return;
 
-    // On start, also try to sync any previously cached entries
-    syncCached();
+        // Request background permission
+        const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+        if (bgStatus !== 'granted') {
+          Alert.alert(
+            'Permisiune Locație Background',
+            'Aplicația necesită permisiunea de locație în background pentru tracking GPS continuu. Te rugăm să activezi permisiunea din setări.',
+            [
+              { text: 'Anulează', style: 'cancel' },
+              { text: 'Deschide Setări', onPress: () => Linking.openSettings() },
+            ],
+          );
+          return;
+        }
+
+        if (cancelled) return;
+
+        // Stop any previously running task before starting fresh
+        const alreadyStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        if (alreadyStarted) {
+          await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        }
+
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 30000,
+          distanceInterval: 0,
+          foregroundService: {
+            notificationTitle: 'Pontaj Activ',
+            notificationBody: 'Tracking GPS activ',
+          },
+          showsBackgroundLocationIndicator: true,
+        });
+
+        // Also try to sync any previously cached entries on start
+        syncCached();
+      } catch {
+        // Location services unavailable — skip
+      }
+    };
+
+    startBackgroundLocation();
 
     return () => {
-      if (collectRef.current) { clearInterval(collectRef.current); collectRef.current = null; }
+      cancelled = true;
+      Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
+        .then((started) => {
+          if (started) {
+            return Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+          }
+        })
+        .catch(() => { /* noop */ });
       if (syncRef.current) { clearTimeout(syncRef.current); syncRef.current = null; }
     };
-  }, [active, collectReading, flushBuffer, syncCached]);
+  }, [active, flushBuffer, syncCached]);
 
   // Listen for network reconnection to trigger sync
   useEffect(() => {

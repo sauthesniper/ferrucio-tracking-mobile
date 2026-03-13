@@ -61,8 +61,11 @@
   "leader.checkInEmployee": "Pontare",
   "leader.smsEmployee": "Mesaj",
   "leader.callEmployeeBtn": "Sună",
+  "leader.viewActiveSession": "Vezi sesiune {type}",
+  "leader.activeSessionFound": "Ai o sesiune activă. Apasă pentru a o vedea.",
+  "leader.restoringSession": "Se restaurează sesiunea...",
 
-  "login.title": "PONTAJ ANGAJATI",
+  "login.title": "Pontaj Feruccio Group",
   "login.local": "LOCAL",
   "login.proxyProd": "PROXY PROD",
   "login.modeNgrok": "ngrok (orice rețea)",

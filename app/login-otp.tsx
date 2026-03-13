@@ -9,12 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Switch,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/auth-context';
 import { requestOtp } from '@/services/auth-service';
-import { loadApiMode, setApiMode } from '@/services/api';
 import { useTranslation } from '@/i18n';
 import { registerPushToken } from '@/services/push-token';
 
@@ -32,12 +31,7 @@ export default function LoginOtpScreen() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isProd, setIsProd] = useState(false);
   const justLoggedIn = React.useRef(false);
-
-  useEffect(() => {
-    loadApiMode().then((m) => setIsProd(m === 'prod'));
-  }, []);
 
   // Register push token after successful login
   useEffect(() => {
@@ -46,11 +40,6 @@ export default function LoginOtpScreen() {
       registerPushToken(authToken).catch(() => {});
     }
   }, [authToken]);
-
-  const toggleMode = async (value: boolean) => {
-    setIsProd(value);
-    await setApiMode(value ? 'prod' : 'local');
-  };
 
   const handleRequestOtp = async () => {
     setError('');
@@ -107,23 +96,18 @@ export default function LoginOtpScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        <Image
+          source={require('@/assets/images/cropped-fg-logo-1-1.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>{t('login.title')}</Text>
-
-        {/* Backend URL switch */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 4 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#9ca3af' : '#007AFF' }}>{t('login.local')}</Text>
-          <Switch value={isProd} onValueChange={toggleMode} trackColor={{ false: '#d1d5db', true: '#007AFF' }} thumbColor="#fff" />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: isProd ? '#007AFF' : '#9ca3af' }}>{t('login.proxyProd')}</Text>
-        </View>
-        <Text style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginBottom: 16 }}>
-          {isProd ? t('login.modeNgrok') : t('login.modeLocal')}
-        </Text>
 
         <Text style={styles.subtitle}>{t('loginOtp.subtitle')}</Text>
 
@@ -261,17 +245,6 @@ export default function LoginOtpScreen() {
             </TouchableOpacity>
           </>
         )}
-
-        {/* Link to admin login */}
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => router.push('/login')}
-          disabled={loading}
-          accessibilityRole="link"
-          accessibilityLabel="Login administrator"
-        >
-          <Text style={styles.linkText}>{t('loginOtp.adminLogin')}</Text>
-        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -293,6 +266,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 4,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
@@ -367,14 +346,5 @@ const styles = StyleSheet.create({
   resendText: {
     color: '#007AFF',
     fontSize: 14,
-  },
-  linkButton: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  linkText: {
-    color: '#888',
-    fontSize: 13,
-    textDecorationLine: 'underline',
   },
 });
