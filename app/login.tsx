@@ -12,6 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '@/context/auth-context';
 import { useTranslation } from '@/i18n';
 import { registerPushToken } from '@/services/push-token';
@@ -186,6 +187,19 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.qrScanButton}
+            onPress={() => router.push('/qr-login' as never)}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel={t('login.qrLink')}
+          >
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path d="M3 3h7v7H3V3zm2 2v3h3V5H5zm9-2h7v7h-7V3zm2 2v3h3V5h-3zM3 14h7v7H3v-7zm2 2v3h3v-3H5zm11-2h2v2h-2v-2zm-2 4h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm0-4h2v2h-2v-2z" fill="#fff" />
+            </Svg>
+            <Text style={styles.qrScanButtonText}>{t('login.qrLink')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.linkButton}
             onPress={() => router.push('/login-otp')}
             disabled={loading}
@@ -193,18 +207,6 @@ export default function LoginScreen() {
             accessibilityLabel={t('login.otpLink')}
           >
             <Text style={styles.linkText}>{t('login.otpLink')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => {
-              router.push('/qr-login' as never);
-            }}
-            disabled={loading}
-            accessibilityRole="link"
-            accessibilityLabel={t('login.qrLink')}
-          >
-            <Text style={styles.linkText}>{t('login.qrLink')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -285,6 +287,23 @@ const styles = StyleSheet.create({
   linkButton: {
     marginTop: 18,
     alignItems: 'center',
+  },
+  qrScanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 8,
+    paddingVertical: 14,
+    marginTop: 20,
+  },
+  qrScanButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   linkText: {
     color: '#FF8888',

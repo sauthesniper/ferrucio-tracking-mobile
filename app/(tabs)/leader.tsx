@@ -1,16 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  FlatList,
-  Alert,
-  Modal,
-  Linking,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, FlatList, Alert, Modal, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg';
@@ -20,36 +9,17 @@ import { useAttendance } from '@/hooks/use-attendance';
 import { apiPost, apiGet } from '@/services/api';
 import { useTranslation } from '@/i18n';
 
-interface SessionData {
-  sessionId: number;
-  qrToken: string;
-  numericCode: string;
-  expiresAt: string;
-}
+interface SessionData { sessionId: number; qrToken: string; numericCode: string; expiresAt: string; }
+interface ActiveSessionInfo { id: number; type: 'check_in'|'check_out'; status: string; qr_token: string; numeric_code: string; qr_expires_at: string; employee_count: number; }
+interface Employee { id: number; name: string; unique_code: string; phone?: string; check_in_at?: string; check_out_at?: string; duration_minutes?: number; }
+interface RecentEmployee { id: number; username: string; phone: string|null; role: string; isCheckedIn: boolean; checkInAt: string|null; }
+interface LeaderInfo { id: number; name: string; username: string; }
 
-interface Employee {
-  id: number;
-  name: string;
-  unique_code: string;
-  phone?: string;
-  check_in_at?: string;
-  check_out_at?: string;
-  duration_minutes?: number;
-}
+const phonePath = "M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z";
+const smsPath = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z";
 
-interface RecentEmployee {
-  id: number;
-  username: string;
-  phone: string | null;
-  role: string;
-  isCheckedIn: boolean;
-  checkInAt: string | null;
-}
-
-interface LeaderInfo {
-  id: number;
-  name: string;
-  username: string;
+function mapEmp(e: any): Employee {
+  return { id: e.employee_id ?? e.id, name: e.employee_name ?? e.name ?? '', unique_code: e.unique_code, phone: e.phone, check_in_at: e.check_in_at, check_out_at: e.check_out_at, duration_minutes: e.duration_minutes };
 }
 
 export default function LeaderScreen() {
@@ -58,847 +28,352 @@ export default function LeaderScreen() {
   const { isCheckedIn, refetch: refetchAttendance } = useAttendance();
   const { t } = useTranslation();
 
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [sessionType, setSessionType] = useState<'check_in' | 'check_out' | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [ciSess, setCiSess] = useState<SessionData|null>(null);
+  const [coSess, setCoSess] = useState<SessionData|null>(null);
+  const [ciEmps, setCiEmps] = useState<Employee[]>([]);
+  const [coEmps, setCoEmps] = useState<Employee[]>([]);
+  const [viewing, setViewing] = useState<'check_in'|'check_out'|null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Transfer modal state
-  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+  const [error, setError] = useState<string|null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [xferType, setXferType] = useState<'check_in'|'check_out'>('check_in');
   const [leaders, setLeaders] = useState<LeaderInfo[]>([]);
   const [loadingLeaders, setLoadingLeaders] = useState(false);
   const [transferring, setTransferring] = useState(false);
-
-  // Recent employees modal state
-  const [showEmployeesModal, setShowEmployeesModal] = useState(false);
-  const [recentEmployees, setRecentEmployees] = useState<RecentEmployee[]>([]);
+  const [showEmps, setShowEmps] = useState(false);
+  const [recentEmps, setRecentEmps] = useState<RecentEmployee[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
-  // Session restore state
-  const [restoringSession, setRestoringSession] = useState(false);
-  const [pendingActiveSession, setPendingActiveSession] = useState<{
-    id: number;
-    type: 'check_in' | 'check_out';
-    qr_token: string;
-    numeric_code: string;
-    qr_expires_at: string;
-  } | null>(null);
+  const sess = viewing === 'check_in' ? ciSess : coSess;
+  const emps = viewing === 'check_in' ? ciEmps : coEmps;
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fmtDur = (d?: string) => { if (!d) return '—'; const s = Math.floor((Date.now()-new Date(d).getTime())/1000); return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`; };
 
-  const formatWorkDuration = (checkInAt?: string): string => {
-    if (!checkInAt) return '—';
-    const checkInTime = new Date(checkInAt).getTime();
-    const now = Date.now();
-    const totalSeconds = Math.floor((now - checkInTime) / 1000);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    return `${h}h ${m}m`;
+  const handleCoEmp = (emp: Employee) => {
+    Alert.alert(t('leader.checkOutConfirmTitle'), t('leader.checkOutConfirmMsg').replace('{name}', emp.name), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.confirm'), style: 'destructive', onPress: async () => {
+        if (!token) return;
+        try {
+          const r = await apiPost('/api/attendance/manual-check-out', { employee_id: emp.id }, token);
+          if (r.ok) { Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.name)); pollAll(); }
+          else Alert.alert(t('common.error'), (r.data as any).error ?? t('leader.checkOutFailed'));
+        } catch { Alert.alert(t('common.error'), t('common.networkError')); }
+      }},
+    ]);
   };
 
-  const handleCheckOutEmployee = (emp: Employee) => {
-    Alert.alert(
-      t('leader.checkOutConfirmTitle'),
-      t('leader.checkOutConfirmMsg').replace('{name}', emp.name),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          style: 'destructive',
-          onPress: async () => {
-            if (!token) return;
-            try {
-              const res = await apiPost('/api/attendance/manual-check-out', { employee_id: emp.id }, token);
-              if (res.ok) {
-                Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.name));
-                pollEmployees();
-              } else {
-                const errData = res.data as unknown as { error?: string };
-                Alert.alert(t('common.error'), errData.error ?? t('leader.checkOutFailed'));
-              }
-            } catch {
-              Alert.alert(t('common.error'), t('common.networkError'));
-            }
-          },
-        },
-      ]
-    );
-  };
+  const handleCall = (e: { phone?: string|null }) => { if (e.phone) Linking.openURL(`tel:${e.phone}`); };
+  const handleSms = (e: { phone?: string|null }) => { if (e.phone) Linking.openURL(`sms:${e.phone}`); };
 
-  const handleCallEmployee = (emp: { phone?: string | null }) => {
-    if (emp.phone) Linking.openURL(`tel:${emp.phone}`);
-  };
-
-  const handleSmsEmployee = (emp: { phone?: string | null }) => {
-    if (emp.phone) Linking.openURL(`sms:${emp.phone}`);
-  };
-
-  // Manual check-in for a recent employee
-  const handleManualCheckIn = async (emp: RecentEmployee) => {
+  const manualCi = async (e: RecentEmployee) => {
     if (!token) return;
     try {
-      const res = await apiPost('/api/attendance/manual-check-in', { employee_id: emp.id, reason: 'Pontare manuală din lista angajați' }, token);
-      if (res.ok) {
-        Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.username));
-        fetchRecentEmployees();
-      } else {
-        const errData = res.data as unknown as { error?: string };
-        Alert.alert(t('common.error'), errData.error ?? t('common.error'));
-      }
-    } catch {
-      Alert.alert(t('common.error'), t('common.networkError'));
-    }
+      const r = await apiPost('/api/attendance/manual-check-in', { employee_id: e.id, reason: 'Pontare manuală' }, token);
+      if (r.ok) { Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', e.username)); fetchRecent(); }
+      else Alert.alert(t('common.error'), (r.data as any).error ?? t('common.error'));
+    } catch { Alert.alert(t('common.error'), t('common.networkError')); }
   };
 
-  // Manual check-out for a recent employee
-  const handleManualCheckOut = async (emp: RecentEmployee) => {
+  const manualCo = async (e: RecentEmployee) => {
     if (!token) return;
     try {
-      const res = await apiPost('/api/attendance/manual-check-out', { employee_id: emp.id, reason: 'Depontare manuală din lista angajați' }, token);
-      if (res.ok) {
-        Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', emp.username));
-        fetchRecentEmployees();
-      } else {
-        const errData = res.data as unknown as { error?: string };
-        Alert.alert(t('common.error'), errData.error ?? t('common.error'));
-      }
-    } catch {
-      Alert.alert(t('common.error'), t('common.networkError'));
-    }
+      const r = await apiPost('/api/attendance/manual-check-out', { employee_id: e.id, reason: 'Depontare manuală' }, token);
+      if (r.ok) { Alert.alert(t('common.success'), t('leader.checkOutSuccess').replace('{name}', e.username)); fetchRecent(); }
+      else Alert.alert(t('common.error'), (r.data as any).error ?? t('common.error'));
+    } catch { Alert.alert(t('common.error'), t('common.networkError')); }
   };
 
-  const fetchRecentEmployees = useCallback(async () => {
-    if (!token) return;
-    setLoadingRecent(true);
-    try {
-      const res = await apiGet<{ employees: RecentEmployee[] }>('/api/attendance/recent-employees?days=5', token);
-      if (res.ok) {
-        setRecentEmployees(res.data.employees ?? []);
-      }
-    } catch { /* ignore */ }
-    finally { setLoadingRecent(false); }
+  const fetchRecent = useCallback(async () => {
+    if (!token) return; setLoadingRecent(true);
+    try { const r = await apiGet<{employees:RecentEmployee[]}>('/api/attendance/recent-employees?days=5', token); if (r.ok) setRecentEmps(r.data.employees ?? []); }
+    catch {} finally { setLoadingRecent(false); }
   }, [token]);
 
-  const openEmployeesModal = () => {
-    setShowEmployeesModal(true);
-    fetchRecentEmployees();
-  };
+  useFocusEffect(useCallback(() => { refetchAttendance(); }, [refetchAttendance]));
 
-  useFocusEffect(
-    useCallback(() => {
-      refetchAttendance();
-    }, [refetchAttendance])
-  );
-
-  // Check for active session on mount (session restore)
+  // Restore active sessions on mount
   useEffect(() => {
     if (!token || !user) return;
-    // Don't check if we already have a session active in state
-    if (session) return;
-
-    let cancelled = false;
-
-    const checkActiveSession = async () => {
+    let c = false;
+    (async () => {
       try {
-        const res = await apiGet<{ sessions: Array<{
-          id: number;
-          leader_id: number;
-          type: 'check_in' | 'check_out';
-          qr_token: string;
-          numeric_code: string;
-          qr_expires_at: string;
-          status: string;
-        }> }>('/api/sessions?status=active', token);
-
-        if (cancelled) return;
-
-        if (res.ok && res.data.sessions?.length > 0) {
-          // Find the first active session belonging to this leader
-          const activeSession = res.data.sessions.find(s => s.leader_id === user.id);
-          if (activeSession) {
-            setPendingActiveSession(activeSession);
-          }
+        const r = await apiGet<{sessions:ActiveSessionInfo[]}>('/api/sessions?status=active', token);
+        if (c || !r.ok) { setRestoring(false); return; }
+        for (const s of (r.data.sessions ?? []).filter(s => s.status === 'active')) {
+          const d: SessionData = { sessionId: s.id, qrToken: s.qr_token, numericCode: s.numeric_code, expiresAt: s.qr_expires_at };
+          if (s.type === 'check_in') setCiSess(d); else setCoSess(d);
         }
-      } catch {
-        // Silently fail — show normal create buttons
-      }
-    };
+        const first = (r.data.sessions ?? []).find(s => s.status === 'active');
+        if (first) setViewing(first.type as any);
+      } catch {} finally { if (!c) setRestoring(false); }
+    })();
+    return () => { c = true; };
+  }, [token, user]);
 
-    checkActiveSession();
-    return () => { cancelled = true; };
-  }, [token, user, session]);
-
-  const pollEmployees = useCallback(async () => {
-    if (!session || !token) return;
-    try {
-      const res = await apiGet<{ employees: Employee[] }>(
-        `/api/sessions/${session.sessionId}/employees`,
-        token,
-      );
-      if (res.ok) {
-        const mapped = (res.data.employees ?? []).map((e: any) => ({
-          id: e.employee_id ?? e.id,
-          name: e.employee_name ?? e.name ?? '',
-          unique_code: e.unique_code,
-          phone: e.phone,
-          check_in_at: e.check_in_at,
-          check_out_at: e.check_out_at,
-          duration_minutes: e.duration_minutes,
-        }));
-        setEmployees(mapped);
-      }
-    } catch { /* ignore */ }
-  }, [session, token]);
+  const pollAll = useCallback(async () => {
+    if (!token) return;
+    if (ciSess) {
+      try { const r = await apiGet<{employees:Employee[]}>(`/api/sessions/${ciSess.sessionId}/employees`, token); if (r.ok) setCiEmps((r.data.employees??[]).map(mapEmp)); } catch {}
+    }
+    if (coSess) {
+      try { const r = await apiGet<{employees:Employee[]}>(`/api/sessions/${coSess.sessionId}/employees`, token); if (r.ok) setCoEmps((r.data.employees??[]).map(mapEmp)); } catch {}
+    }
+  }, [ciSess, coSess, token]);
 
   useEffect(() => {
-    if (session) {
-      pollEmployees();
-      pollRef.current = setInterval(pollEmployees, 5000);
-    }
-    return () => {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    };
-  }, [session, pollEmployees]);
+    if (ciSess || coSess) { pollAll(); pollRef.current = setInterval(pollAll, 5000); }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [ciSess, coSess, pollAll]);
 
-  const restoreActiveSession = async () => {
-    if (!pendingActiveSession || !token) return;
-    setRestoringSession(true);
-    setError(null);
+  const startSession = async (type: 'check_in'|'check_out') => {
+    if (!token) return; setLoading(true); setError(null);
     try {
-      const s = pendingActiveSession;
-      const isQrExpired = new Date(s.qr_expires_at).getTime() < Date.now();
-
-      if (isQrExpired) {
-        // Auto-regenerate QR via invalidate endpoint
-        const res = await apiPost<{ qrToken: string; numericCode: string; expiresAt: string; sessionId: number }>(
-          `/api/sessions/${s.id}/invalidate`,
-          {},
-          token,
-        );
-        if (res.ok) {
-          setSession({
-            sessionId: s.id,
-            qrToken: res.data.qrToken,
-            numericCode: res.data.numericCode,
-            expiresAt: res.data.expiresAt,
-          });
-        } else {
-          // Even if invalidate fails, still restore with old data
-          setSession({
-            sessionId: s.id,
-            qrToken: s.qr_token,
-            numericCode: s.numeric_code,
-            expiresAt: s.qr_expires_at,
-          });
-        }
-      } else {
-        setSession({
-          sessionId: s.id,
-          qrToken: s.qr_token,
-          numericCode: s.numeric_code,
-          expiresAt: s.qr_expires_at,
-        });
-      }
-      setSessionType(s.type);
-      setPendingActiveSession(null);
-    } catch {
-      setError('Failed to restore session.');
-    } finally {
-      setRestoringSession(false);
-    }
-  };
-
-  const startSession = async (type: 'check_in' | 'check_out') => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiPost<SessionData>('/api/sessions', { type }, token);
-      if (res.ok) {
-        setSession(res.data);
-        setSessionType(type);
-        setEmployees([]);
-      } else {
-        const errData = res.data as unknown as { error?: string };
-        setError(errData.error ?? 'Failed to start session');
-      }
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      const r = await apiPost<SessionData>('/api/sessions', { type }, token);
+      if (r.ok) { if (type==='check_in') { setCiSess(r.data); setCiEmps([]); } else { setCoSess(r.data); setCoEmps([]); } setViewing(type); }
+      else setError((r.data as any).error ?? 'Failed to start session');
+    } catch { setError('Network error.'); } finally { setLoading(false); }
   };
 
   const invalidateQR = async () => {
-    if (!session || !token) return;
-    setLoading(true);
-    setError(null);
+    if (!sess || !token) return; setLoading(true); setError(null);
     try {
-      const res = await apiPost<{ qrToken: string; numericCode: string; expiresAt: string }>(
-        `/api/sessions/${session.sessionId}/invalidate`,
-        {},
-        token,
-      );
-      if (res.ok) {
-        setSession((prev) =>
-          prev
-            ? { ...prev, qrToken: res.data.qrToken, numericCode: res.data.numericCode, expiresAt: res.data.expiresAt }
-            : null,
-        );
-      } else {
-        const errData = res.data as unknown as { error?: string };
-        setError(errData.error ?? 'Failed to regenerate QR');
-      }
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      const r = await apiPost<{qrToken:string;numericCode:string;expiresAt:string}>(`/api/sessions/${sess.sessionId}/invalidate`, {}, token);
+      if (r.ok) {
+        const u = { ...sess, qrToken: r.data.qrToken, numericCode: r.data.numericCode, expiresAt: r.data.expiresAt };
+        if (viewing==='check_in') setCiSess(u); else setCoSess(u);
+      } else setError((r.data as any).error ?? 'Failed to regenerate QR');
+    } catch { setError('Network error.'); } finally { setLoading(false); }
   };
 
-  const openTransferModal = async () => {
-    if (!token) return;
-    setShowTransferModal(true);
-    setLoadingLeaders(true);
-    try {
-      const res = await apiGet<{ users: LeaderInfo[] }>('/api/users/search?q=&role=leader', token);
-      if (res.ok) {
-        setLeaders((res.data.users ?? []).filter((l) => l.id !== user?.id));
-      } else {
-        setLeaders([]);
-      }
-    } catch {
-      setLeaders([]);
-    } finally {
-      setLoadingLeaders(false);
-    }
+  const openXfer = async (type: 'check_in'|'check_out') => {
+    if (!token) return; setXferType(type); setShowTransfer(true); setLoadingLeaders(true);
+    try { const r = await apiGet<{users:LeaderInfo[]}>('/api/users/search?q=&role=leader', token); if (r.ok) setLeaders((r.data.users??[]).filter(l=>l.id!==user?.id)); else setLeaders([]); }
+    catch { setLeaders([]); } finally { setLoadingLeaders(false); }
   };
 
-  const transferLeadership = async (targetLeaderId: number) => {
-    if (!session || !token) return;
-    setTransferring(true);
+  const doTransfer = async (tid: number) => {
+    const s = xferType==='check_in' ? ciSess : coSess;
+    if (!s || !token) return; setTransferring(true);
     try {
-      const res = await apiPost<{ message: string }>(
-        `/api/sessions/${session.sessionId}/transfer`,
-        { targetLeaderId },
-        token,
-      );
-      if (res.ok) {
-        Alert.alert(t('common.success'), t('leader.transferSuccess'));
-        setShowTransferModal(false);
-        setSession(null);
-        setSessionType(null);
-        setEmployees([]);
-      } else {
-        const errData = res.data as unknown as { error?: string };
-        Alert.alert(t('common.error'), errData.error ?? t('leader.transferFailed'));
-      }
-    } catch {
-      Alert.alert(t('common.error'), t('common.networkError'));
-    } finally {
-      setTransferring(false);
-    }
+      const r = await apiPost<{message:string}>(`/api/sessions/${s.sessionId}/transfer`, { targetLeaderId: tid }, token);
+      if (r.ok) {
+        Alert.alert(t('common.success'), t('leader.transferSuccess')); setShowTransfer(false);
+        if (xferType==='check_in') { setCiSess(null); setCiEmps([]); } else { setCoSess(null); setCoEmps([]); }
+        if (viewing===xferType) setViewing(null);
+      } else Alert.alert(t('common.error'), (r.data as any).error ?? t('leader.transferFailed'));
+    } catch { Alert.alert(t('common.error'), t('common.networkError')); } finally { setTransferring(false); }
   };
 
-  const endSession = async () => {
+  const endSession = async (type: 'check_in'|'check_out') => {
+    const s = type==='check_in' ? ciSess : coSess;
+    const e = type==='check_in' ? ciEmps : coEmps;
     const doEnd = async () => {
-      if (session && token) {
-        try {
-          await apiPost(`/api/sessions/${session.sessionId}/end`, {}, token);
-        } catch { /* still clear local state even if API fails */ }
-      }
-      setSession(null);
-      setSessionType(null);
-      setEmployees([]);
-      setPendingActiveSession(null);
+      if (s && token) { try { await apiPost(`/api/sessions/${s.sessionId}/end`, {}, token); } catch {} }
+      if (type==='check_in') { setCiSess(null); setCiEmps([]); } else { setCoSess(null); setCoEmps([]); }
+      if (viewing===type) setViewing(null);
     };
-
-    if (sessionType === 'check_out' && employees.some(e => !e.check_out_at)) {
+    if (type==='check_out' && e.some(x => !x.check_out_at)) {
       Alert.alert(t('leader.warningEndSession'), t('leader.warningEndSessionMsg'), [
         { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          style: 'destructive',
-          onPress: doEnd,
-        },
-      ]);
-      return;
+        { text: t('common.confirm'), style: 'destructive', onPress: doEnd },
+      ]); return;
     }
     await doEnd();
   };
 
-  // Phone icon SVG path
-  const phonePath = "M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2z";
-  const smsPath = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z";
+  if (restoring) return <View style={[S.container,{justifyContent:'center',alignItems:'center'}]}><ActivityIndicator size="large" color="#007AFF" /></View>;
 
-  // --- Recent Employees Modal ---
-  const renderEmployeesModal = () => (
-    <Modal
-      visible={showEmployeesModal}
-      transparent
-      animationType="slide"
-      onRequestClose={() => {}}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{t('leader.recentEmployees')}</Text>
-            <TouchableOpacity
-              style={styles.modalCloseX}
-              onPress={() => setShowEmployeesModal(false)}
-              accessibilityLabel="Close"
-              accessibilityRole="button"
-            >
-              <Text style={styles.modalCloseXText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          {loadingRecent ? (
-            <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 24 }} />
-          ) : recentEmployees.filter(e => e.id !== user?.id).length === 0 ? (
-            <Text style={styles.emptyText}>{t('leader.noRecentEmployees')}</Text>
-          ) : (
-            <FlatList
-              data={recentEmployees.filter(e => e.id !== user?.id)}
-              keyExtractor={(item) => item.id.toString()}
-              style={{ maxHeight: 500 }}
-              renderItem={({ item }) => (
-                <View style={styles.recentEmpRow}>
-                  <View style={styles.recentEmpInfo}>
-                    <Text style={styles.recentEmpName}>{item.username}</Text>
-                    <Text style={styles.recentEmpPhone}>{item.phone ?? '—'}</Text>
-                  </View>
-                  <View style={styles.recentEmpActions}>
-                    {item.phone ? (
-                      <>
-                        <TouchableOpacity
-                          style={styles.smallActionBtn}
-                          onPress={() => handleCallEmployee(item)}
-                          accessibilityLabel={t('leader.callEmployeeBtn')}
-                          accessibilityRole="button"
-                        >
-                          <Svg width={16} height={16} viewBox="0 0 24 24"><Path d={phonePath} fill="#28A745" /></Svg>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.smallActionBtn}
-                          onPress={() => handleSmsEmployee(item)}
-                          accessibilityLabel={t('leader.smsEmployee')}
-                          accessibilityRole="button"
-                        >
-                          <Svg width={16} height={16} viewBox="0 0 24 24"><Path d={smsPath} fill="#007AFF" /></Svg>
-                        </TouchableOpacity>
-                      </>
-                    ) : null}
-                    {item.isCheckedIn ? (
-                      <TouchableOpacity
-                        style={styles.depontBtn}
-                        onPress={() => handleManualCheckOut(item)}
-                        accessibilityLabel={t('leader.checkOutEmployee')}
-                        accessibilityRole="button"
-                      >
-                        <Text style={styles.depontBtnText}>{t('leader.checkOutEmployee')}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.pontBtn}
-                        onPress={() => handleManualCheckIn(item)}
-                        accessibilityLabel={t('leader.checkInEmployee')}
-                        accessibilityRole="button"
-                      >
-                        <Text style={styles.pontBtnText}>{t('leader.checkInEmployee')}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              )}
-            />
-          )}
-
-          <TouchableOpacity
-            style={styles.modalCloseBtn}
-            onPress={() => setShowEmployeesModal(false)}
-            accessibilityLabel="Close"
-            accessibilityRole="button"
-          >
-            <Text style={styles.modalCloseBtnText}>{t('leader.cancel')}</Text>
-          </TouchableOpacity>
-        </View>
+  const renderCard = (s: SessionData, type: 'check_in'|'check_out', cnt: number) => (
+    <TouchableOpacity key={type} style={[S.sessCard, viewing===type && S.sessCardActive, type==='check_in' ? S.sessCardCi : S.sessCardCo]} onPress={() => setViewing(type)} accessibilityRole="button">
+      <View style={{flex:1}}>
+        <Text style={S.sessCardTitle}>{type==='check_in' ? t('leader.checkInSession') : t('leader.checkOutSession')}</Text>
+        <Text style={S.sessCardSub}>#{s.sessionId} · {cnt} angajați</Text>
       </View>
-    </Modal>
+      <TouchableOpacity style={S.sessCardEnd} onPress={() => endSession(type)} accessibilityRole="button"><Text style={S.sessCardEndTxt}>✕</Text></TouchableOpacity>
+    </TouchableOpacity>
   );
 
-  // --- No active session view ---
-  if (!session) {
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('leader.title')}</Text>
-        </View>
-
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        {pendingActiveSession ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {t('leader.activeSessionFound')}
-            </Text>
-            <TouchableOpacity
-              style={styles.restoreSessionBtn}
-              onPress={restoreActiveSession}
-              disabled={restoringSession}
-              accessibilityLabel="View active session"
-              accessibilityRole="button"
-            >
-              {restoringSession ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnText}>
-                  {t('leader.viewActiveSession').replace(
-                    '{type}',
-                    pendingActiveSession.type === 'check_in' ? 'check-in' : 'check-out'
-                  )}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{t('leader.startSession')}</Text>
-          <Text style={styles.cardDesc}>
-            {isCheckedIn
-              ? t('leader.startSessionDescCheckedIn')
-              : t('leader.startSessionDescNotCheckedIn')}
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.checkInBtn, !isCheckedIn && { opacity: 0.4 }]}
-            onPress={() => startSession('check_in')}
-            disabled={loading || !isCheckedIn}
-            accessibilityLabel="Start check-in session"
-            accessibilityRole="button"
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>{t('leader.startCheckInSession')}</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.checkOutBtn, !isCheckedIn && { opacity: 0.4 }]}
-            onPress={() => startSession('check_out')}
-            disabled={loading || !isCheckedIn}
-            accessibilityLabel="Start check-out session"
-            accessibilityRole="button"
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>{t('leader.startCheckOutSession')}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-        )}
-
-        <TouchableOpacity
-          style={styles.manualBtn}
-          onPress={() => router.push('/manual-check-in' as any)}
-          accessibilityLabel="Manual check-in or check-out"
-          accessibilityRole="button"
-        >
-          <Text style={styles.manualBtnText}>{t('leader.manualCheckInOut')}</Text>
+  const renderDetail = (s: SessionData, type: 'check_in'|'check_out', el: Employee[]) => (
+    <>
+      <View style={S.qrCard}>
+        <Text style={S.qrLabel}>{t('leader.scanQrCode')}</Text>
+        <View style={S.qrBox}><QRCode value={s.qrToken} size={200} /></View>
+        <Text style={S.numCode}>{s.numericCode}</Text>
+        <Text style={S.expires}>Expires: {new Date(s.expiresAt).toLocaleTimeString()}</Text>
+      </View>
+      <View style={S.actRow}>
+        <TouchableOpacity style={S.actBtn} onPress={invalidateQR} disabled={loading} accessibilityRole="button">
+          <Text style={S.actBtnTxt}>{loading ? t('leader.generating') : t('leader.newQrCode')}</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.viewEmployeesBtn}
-          onPress={openEmployeesModal}
-          accessibilityLabel={t('leader.viewEmployees')}
-          accessibilityRole="button"
-        >
-          <Text style={styles.viewEmployeesBtnText}>{t('leader.viewEmployees')}</Text>
+        <TouchableOpacity style={S.actBtn} onPress={() => openXfer(type)} accessibilityRole="button">
+          <Text style={S.actBtnTxt}>{t('leader.transfer')}</Text>
         </TouchableOpacity>
+      </View>
+      <View style={S.empSection}>
+        <Text style={S.secTitle}>{t('leader.employees').replace('{count}', String(el.length))}</Text>
+        {el.length===0 ? <Text style={S.empty}>{t('leader.noEmployeesYet')}</Text> : el.map((emp,i) => (
+          <View key={`e-${emp.id}-${i}`} style={S.empRow}>
+            <View style={{flex:1}}>
+              <Text style={S.empName}>{emp.name}</Text>
+              <Text style={S.empCode}>{emp.unique_code}</Text>
+              {emp.check_in_at && !emp.check_out_at && <Text style={S.empDur}>{t('leader.workDuration')}: {fmtDur(emp.check_in_at)}</Text>}
+            </View>
+            <Text style={S.empTime}>{emp.check_in_at ? new Date(emp.check_in_at).toLocaleTimeString() : emp.check_out_at ? new Date(emp.check_out_at).toLocaleTimeString() : ''}</Text>
+            <View style={S.empActs}>
+              {emp.phone && <TouchableOpacity style={S.callBtn} onPress={() => handleCall(emp)} accessibilityRole="button"><Svg width={18} height={18} viewBox="0 0 24 24"><Path d={phonePath} fill="#007AFF" /></Svg></TouchableOpacity>}
+              {!emp.check_out_at && <TouchableOpacity style={S.coEmpBtn} onPress={() => handleCoEmp(emp)} accessibilityRole="button"><Text style={S.coEmpTxt}>{t('leader.checkOutEmployee')}</Text></TouchableOpacity>}
+            </View>
+          </View>
+        ))}
+      </View>
+      <TouchableOpacity style={S.endBtn} onPress={() => endSession(type)} accessibilityRole="button"><Text style={S.endBtnTxt}>{t('leader.endSession')}</Text></TouchableOpacity>
+    </>
+  );
 
-        {renderEmployeesModal()}
-      </ScrollView>
-    );
-  }
-
-  // --- Active session view ---
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>
-            {sessionType === 'check_in' ? t('leader.checkInSession') : t('leader.checkOutSession')}
-          </Text>
-          <Text style={styles.subtitle}>{t('leader.sessionNumber').replace('{id}', String(session.sessionId))}</Text>
-        </View>
+    <View style={S.container}>
+      <ScrollView contentContainerStyle={S.content}>
+        <View style={S.header}><Text style={S.title}>{t('leader.title')}</Text></View>
+        {error && <View style={S.errBox}><Text style={S.errTxt}>{error}</Text></View>}
 
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+        {ciSess && renderCard(ciSess, 'check_in', ciEmps.length)}
+        {coSess && renderCard(coSess, 'check_out', coEmps.length)}
+
+        {(!ciSess || !coSess) && (
+          <View style={S.card}>
+            <Text style={S.cardTitle}>{t('leader.startSession')}</Text>
+            <Text style={S.cardDesc}>{isCheckedIn ? t('leader.startSessionDescCheckedIn') : t('leader.startSessionDescNotCheckedIn')}</Text>
+            {!ciSess && <TouchableOpacity style={[S.ciBtn, !isCheckedIn&&{opacity:0.4}]} onPress={() => startSession('check_in')} disabled={loading||!isCheckedIn} accessibilityRole="button">{loading ? <ActivityIndicator color="#fff" /> : <Text style={S.btnTxt}>{t('leader.startCheckInSession')}</Text>}</TouchableOpacity>}
+            {!coSess && <TouchableOpacity style={[S.coBtn, !isCheckedIn&&{opacity:0.4}]} onPress={() => startSession('check_out')} disabled={loading||!isCheckedIn} accessibilityRole="button">{loading ? <ActivityIndicator color="#fff" /> : <Text style={S.btnTxt}>{t('leader.startCheckOutSession')}</Text>}</TouchableOpacity>}
           </View>
         )}
 
-        {/* QR Code */}
-        <View style={styles.qrCard}>
-          <Text style={styles.qrLabel}>{t('leader.scanQrCode')}</Text>
-          <View style={styles.qrContainer}>
-            <QRCode value={session.qrToken} size={220} />
-          </View>
-          <Text style={styles.numericCode}>{session.numericCode}</Text>
-          <Text style={styles.expiresText}>
-            Expires: {new Date(session.expiresAt).toLocaleTimeString()}
-          </Text>
-        </View>
+        {viewing==='check_in' && ciSess && renderDetail(ciSess, 'check_in', ciEmps)}
+        {viewing==='check_out' && coSess && renderDetail(coSess, 'check_out', coEmps)}
 
-        {/* Action buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={invalidateQR}
-            disabled={loading}
-            accessibilityLabel="Generate new QR code"
-            accessibilityRole="button"
-          >
-            <Text style={styles.actionBtnText}>
-              {loading ? t('leader.generating') : t('leader.newQrCode')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={openTransferModal}
-            accessibilityLabel="Transfer leadership"
-            accessibilityRole="button"
-          >
-            <Text style={styles.actionBtnText}>{t('leader.transfer')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={styles.manualBtn}
-          onPress={() => router.push('/manual-check-in' as any)}
-          accessibilityLabel="Manual check-in or check-out"
-          accessibilityRole="button"
-        >
-          <Text style={styles.manualBtnText}>{t('leader.manualCheckInOut')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.viewEmployeesBtn}
-          onPress={openEmployeesModal}
-          accessibilityLabel={t('leader.viewEmployees')}
-          accessibilityRole="button"
-        >
-          <Text style={styles.viewEmployeesBtnText}>{t('leader.viewEmployees')}</Text>
-        </TouchableOpacity>
-
-        {/* Employee list */}
-        <View style={styles.employeeSection}>
-          <Text style={styles.sectionTitle}>
-            {t('leader.employees').replace('{count}', String(employees.length))}
-          </Text>
-          <Text style={styles.checkedInTotal}>
-            {t('leader.checkedInTotal').replace('{count}', String(employees.filter(e => !e.check_out_at).length))}
-          </Text>
-          {employees.length === 0 ? (
-            <Text style={styles.emptyText}>{t('leader.noEmployeesYet')}</Text>
-          ) : (
-            employees.map((emp, idx) => (
-              <View key={`emp-${emp.id}-${idx}`} style={styles.employeeRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.employeeName}>{emp.name}</Text>
-                  <Text style={styles.employeeCode}>{emp.unique_code}</Text>
-                  {emp.check_in_at && !emp.check_out_at && (
-                    <Text style={styles.employeeDuration}>
-                      {t('leader.workDuration')}: {formatWorkDuration(emp.check_in_at)}
-                    </Text>
-                  )}
-                </View>
-                <Text style={styles.employeeTime}>
-                  {emp.check_in_at
-                    ? new Date(emp.check_in_at).toLocaleTimeString()
-                    : emp.check_out_at
-                      ? new Date(emp.check_out_at).toLocaleTimeString()
-                      : ''}
-                </Text>
-                <View style={styles.employeeActions}>
-                  {emp.phone ? (
-                    <TouchableOpacity
-                      style={styles.callBtn}
-                      onPress={() => handleCallEmployee(emp)}
-                      accessibilityLabel={t('leader.callEmployee') + ` ${emp.name}`}
-                      accessibilityRole="button"
-                    >
-                      <Svg width={18} height={18} viewBox="0 0 24 24"><Path d={phonePath} fill="#007AFF" /></Svg>
-                    </TouchableOpacity>
-                  ) : null}
-                  {!emp.check_out_at && (
-                    <TouchableOpacity
-                      style={styles.checkOutEmployeeBtn}
-                      onPress={() => handleCheckOutEmployee(emp)}
-                      accessibilityLabel={t('leader.checkOutEmployee') + ` ${emp.name}`}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.checkOutEmployeeBtnText}>{t('leader.checkOutEmployee')}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={styles.endSessionBtn}
-          onPress={endSession}
-          accessibilityLabel="End session"
-          accessibilityRole="button"
-        >
-          <Text style={styles.endSessionBtnText}>{t('leader.endSession')}</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={S.manualBtn} onPress={() => router.push('/manual-check-in' as any)} accessibilityRole="button"><Text style={S.manualTxt}>{t('leader.manualCheckInOut')}</Text></TouchableOpacity>
+        <TouchableOpacity style={S.viewEmpsBtn} onPress={() => { setShowEmps(true); fetchRecent(); }} accessibilityRole="button"><Text style={S.viewEmpsTxt}>{t('leader.viewEmployees')}</Text></TouchableOpacity>
       </ScrollView>
 
-      {/* Transfer Leadership Modal */}
-      <Modal
-        visible={showTransferModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowTransferModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('leader.transferLeadership')}</Text>
-            <Text style={styles.modalDesc}>{t('leader.selectLeaderToTransfer')}</Text>
-
-            {loadingLeaders ? (
-              <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 24 }} />
-            ) : leaders.length === 0 ? (
-              <Text style={styles.emptyText}>{t('leader.noOtherLeaders')}</Text>
-            ) : (
-              <FlatList
-                data={leaders}
-                keyExtractor={(item) => item.id.toString()}
-                style={styles.leaderList}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.leaderRow}
-                    onPress={() => transferLeadership(item.id)}
-                    disabled={transferring}
-                    accessibilityLabel={`Transfer to ${item.name}`}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.leaderName}>{item.name}</Text>
-                    <Text style={styles.leaderUsername}>@{item.username}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-
-            {transferring && (
-              <ActivityIndicator size="small" color="#007AFF" style={{ marginTop: 12 }} />
-            )}
-
-            <TouchableOpacity
-              style={styles.modalCloseBtn}
-              onPress={() => setShowTransferModal(false)}
-              accessibilityLabel="Cancel transfer"
-              accessibilityRole="button"
-            >
-              <Text style={styles.modalCloseBtnText}>{t('leader.cancel')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Transfer Modal */}
+      <Modal visible={showTransfer} transparent animationType="slide" onRequestClose={() => setShowTransfer(false)}>
+        <View style={S.modalOv}><View style={S.modalC}>
+          <Text style={S.modalTitle}>{t('leader.transferLeadership')}</Text>
+          <Text style={S.modalDesc}>{t('leader.selectLeaderToTransfer')}</Text>
+          {loadingLeaders ? <ActivityIndicator size="large" color="#007AFF" style={{marginVertical:24}} /> : leaders.length===0 ? <Text style={S.empty}>{t('leader.noOtherLeaders')}</Text> : (
+            <FlatList data={leaders} keyExtractor={i=>i.id.toString()} style={S.leaderList} renderItem={({item}) => (
+              <TouchableOpacity style={S.leaderRow} onPress={() => doTransfer(item.id)} disabled={transferring} accessibilityRole="button">
+                <Text style={S.leaderName}>{item.name}</Text><Text style={S.leaderUser}>@{item.username}</Text>
+              </TouchableOpacity>
+            )} />
+          )}
+          {transferring && <ActivityIndicator size="small" color="#007AFF" style={{marginTop:12}} />}
+          <TouchableOpacity style={S.modalClose} onPress={() => setShowTransfer(false)} accessibilityRole="button"><Text style={S.modalCloseTxt}>{t('leader.cancel')}</Text></TouchableOpacity>
+        </View></View>
       </Modal>
 
-      {renderEmployeesModal()}
+      {/* Recent Employees Modal */}
+      <Modal visible={showEmps} transparent animationType="slide" onRequestClose={() => setShowEmps(false)}>
+        <View style={S.modalOv}><View style={[S.modalC,{maxHeight:'85%'}]}>
+          <View style={S.modalHdr}>
+            <Text style={S.modalTitle}>{t('leader.recentEmployees')}</Text>
+            <TouchableOpacity style={S.modalX} onPress={() => setShowEmps(false)} accessibilityRole="button"><Text style={S.modalXTxt}>✕</Text></TouchableOpacity>
+          </View>
+          {loadingRecent ? <ActivityIndicator size="large" color="#007AFF" style={{marginVertical:24}} /> : recentEmps.filter(e=>e.id!==user?.id).length===0 ? <Text style={S.empty}>{t('leader.noRecentEmployees')}</Text> : (
+            <FlatList data={recentEmps.filter(e=>e.id!==user?.id)} keyExtractor={i=>i.id.toString()} style={{maxHeight:500}} renderItem={({item}) => (
+              <View style={S.recRow}>
+                <View style={S.recInfo}><Text style={S.recName}>{item.username}</Text><Text style={S.recPhone}>{item.phone??'—'}</Text></View>
+                <View style={S.recActs}>
+                  {item.phone && <>
+                    <TouchableOpacity style={S.smBtn} onPress={() => handleCall(item)} accessibilityRole="button"><Svg width={16} height={16} viewBox="0 0 24 24"><Path d={phonePath} fill="#28A745" /></Svg></TouchableOpacity>
+                    <TouchableOpacity style={S.smBtn} onPress={() => handleSms(item)} accessibilityRole="button"><Svg width={16} height={16} viewBox="0 0 24 24"><Path d={smsPath} fill="#007AFF" /></Svg></TouchableOpacity>
+                  </>}
+                  {item.isCheckedIn ? <TouchableOpacity style={S.depontBtn} onPress={() => manualCo(item)} accessibilityRole="button"><Text style={S.depontTxt}>{t('leader.checkOutEmployee')}</Text></TouchableOpacity>
+                   : <TouchableOpacity style={S.pontBtn} onPress={() => manualCi(item)} accessibilityRole="button"><Text style={S.pontTxt}>{t('leader.checkInEmployee')}</Text></TouchableOpacity>}
+                </View>
+              </View>
+            )} />
+          )}
+          <TouchableOpacity style={S.modalClose} onPress={() => setShowEmps(false)} accessibilityRole="button"><Text style={S.modalCloseTxt}>{t('leader.cancel')}</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 24, paddingTop: 60 },
   header: { marginBottom: 24 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#333' },
-  subtitle: { fontSize: 14, color: '#666', marginTop: 4 },
-
-  errorBox: { backgroundColor: '#F8D7DA', borderRadius: 8, padding: 16, marginBottom: 16 },
-  errorText: { color: '#721C24', fontSize: 15 },
-
+  errBox: { backgroundColor: '#F8D7DA', borderRadius: 8, padding: 16, marginBottom: 16 },
+  errTxt: { color: '#721C24', fontSize: 15 },
+  sessCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, padding: 16, marginBottom: 10, borderWidth: 2, borderColor: 'transparent' },
+  sessCardActive: { borderColor: '#007AFF' },
+  sessCardCi: { backgroundColor: '#D4EDDA' },
+  sessCardCo: { backgroundColor: '#F8D7DA' },
+  sessCardTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
+  sessCardSub: { fontSize: 13, color: '#666', marginTop: 2 },
+  sessCardEnd: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center' },
+  sessCardEndTxt: { fontSize: 16, fontWeight: '700', color: '#DC3545' },
   card: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 20, marginBottom: 16 },
   cardTitle: { fontSize: 20, fontWeight: '600', color: '#333', marginBottom: 8 },
   cardDesc: { fontSize: 14, color: '#666', marginBottom: 20 },
-
-  checkInBtn: { backgroundColor: '#28A745', borderRadius: 8, padding: 16, alignItems: 'center', marginBottom: 12 },
-  checkOutBtn: { backgroundColor: '#DC3545', borderRadius: 8, padding: 16, alignItems: 'center' },
-  restoreSessionBtn: { backgroundColor: '#007AFF', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 12 },
-  btnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
-
+  ciBtn: { backgroundColor: '#28A745', borderRadius: 8, padding: 16, alignItems: 'center', marginBottom: 12 },
+  coBtn: { backgroundColor: '#DC3545', borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 4 },
+  btnTxt: { color: '#fff', fontSize: 18, fontWeight: '600' },
   manualBtn: { borderWidth: 1, borderColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 12 },
-  manualBtnText: { color: '#007AFF', fontSize: 16, fontWeight: '600' },
-
-  viewEmployeesBtn: { backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 16 },
-  viewEmployeesBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  manualTxt: { color: '#007AFF', fontSize: 16, fontWeight: '600' },
+  viewEmpsBtn: { backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 16 },
+  viewEmpsTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
 
   qrCard: { backgroundColor: '#F8F9FA', borderRadius: 12, padding: 24, alignItems: 'center', marginBottom: 16 },
   qrLabel: { fontSize: 16, color: '#666', marginBottom: 16 },
-  qrContainer: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
-  numericCode: { fontSize: 36, fontWeight: 'bold', color: '#007AFF', letterSpacing: 4, marginBottom: 8, fontVariant: ['tabular-nums'] },
-  expiresText: { fontSize: 13, color: '#999' },
-
-  actionRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  actionBtn: { flex: 1, backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center' },
-  actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-
-  employeeSection: { marginTop: 8, marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 12 },
-  emptyText: { fontSize: 14, color: '#999', textAlign: 'center', paddingVertical: 16 },
-
-  employeeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F0F0F0', borderRadius: 8, padding: 14, marginBottom: 8 },
-  employeeName: { fontSize: 16, fontWeight: '500', color: '#333' },
-  employeeCode: { fontSize: 13, color: '#666', marginTop: 2 },
-  employeeTime: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
-  employeeActions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
-  employeeDuration: { fontSize: 12, color: '#28A745', marginTop: 2, fontWeight: '500' },
-  checkedInTotal: { fontSize: 14, color: '#007AFF', fontWeight: '600', marginBottom: 12 },
+  qrBox: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
+  numCode: { fontSize: 36, fontWeight: 'bold', color: '#007AFF', letterSpacing: 4, marginBottom: 8 },
+  expires: { fontSize: 13, color: '#999' },
+  actRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  actBtn: { flex: 1, backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center' },
+  actBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  empSection: { marginTop: 8, marginBottom: 24 },
+  secTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 12 },
+  empty: { fontSize: 14, color: '#999', textAlign: 'center', paddingVertical: 16 },
+  empRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F0F0F0', borderRadius: 8, padding: 14, marginBottom: 8 },
+  empName: { fontSize: 16, fontWeight: '500', color: '#333' },
+  empCode: { fontSize: 13, color: '#666', marginTop: 2 },
+  empTime: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
+  empActs: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
+  empDur: { fontSize: 12, color: '#28A745', marginTop: 2, fontWeight: '500' },
   callBtn: { backgroundColor: '#E8F4FD', borderRadius: 8, padding: 8, justifyContent: 'center', alignItems: 'center' },
-  checkOutEmployeeBtn: { backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' },
-  checkOutEmployeeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  coEmpBtn: { backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' },
+  coEmpTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  endBtn: { borderWidth: 1, borderColor: '#DC3545', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 32 },
+  endBtnTxt: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
 
-  endSessionBtn: { borderWidth: 1, borderColor: '#DC3545', borderRadius: 8, padding: 14, alignItems: 'center', marginBottom: 32 },
-  endSessionBtnText: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
-
-  // Recent employees modal
-  recentEmpRow: { backgroundColor: '#F8F9FA', borderRadius: 8, padding: 14, marginBottom: 8 },
-  recentEmpInfo: { marginBottom: 10 },
-  recentEmpName: { fontSize: 17, fontWeight: '700', color: '#333' },
-  recentEmpPhone: { fontSize: 14, color: '#666', marginTop: 2 },
-  recentEmpActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  smallActionBtn: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center' },
+  recRow: { backgroundColor: '#F8F9FA', borderRadius: 8, padding: 14, marginBottom: 8 },
+  recInfo: { marginBottom: 10 },
+  recName: { fontSize: 17, fontWeight: '700', color: '#333' },
+  recPhone: { fontSize: 14, color: '#666', marginTop: 2 },
+  recActs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  smBtn: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center' },
   pontBtn: { backgroundColor: '#28A745', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 12 },
-  pontBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  pontTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
   depontBtn: { backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 12 },
-  depontBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-
-  // Modals
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, maxHeight: '70%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  modalCloseX: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
-  modalCloseXText: { fontSize: 18, color: '#333', fontWeight: '600' },
+  depontTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  modalOv: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalC: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, maxHeight: '70%' },
+  modalHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalX: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
+  modalXTxt: { fontSize: 18, color: '#333', fontWeight: '600' },
   modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', flex: 1 },
   modalDesc: { fontSize: 14, color: '#666', marginBottom: 16 },
   leaderList: { maxHeight: 300 },
   leaderRow: { backgroundColor: '#F0F0F0', borderRadius: 8, padding: 16, marginBottom: 8 },
   leaderName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  leaderUsername: { fontSize: 13, color: '#666', marginTop: 2 },
-  modalCloseBtn: { marginTop: 16, padding: 14, alignItems: 'center' },
-  modalCloseBtnText: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
+  leaderUser: { fontSize: 13, color: '#666', marginTop: 2 },
+  modalClose: { marginTop: 16, padding: 14, alignItems: 'center' },
+  modalCloseTxt: { color: '#DC3545', fontSize: 16, fontWeight: '600' },
 });

@@ -33,6 +33,13 @@ interface DashboardData {
   checkedInCount?: number;
 }
 
+interface ActiveLeaderSession {
+  id: number;
+  type: 'check_in' | 'check_out';
+  status: string;
+  employee_count: number;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { token, user } = useAuth();
@@ -51,6 +58,24 @@ export default function DashboardScreen() {
   const [selfError, setSelfError] = useState<string | null>(null);
 
   const isLeader = user?.role === 'leader';
+
+  const [activeSessions, setActiveSessions] = useState<ActiveLeaderSession[]>([]);
+
+  const fetchActiveSessions = useCallback(async () => {
+    if (!token || (!isLeader && user?.role !== 'admin')) return;
+    try {
+      const res = await apiGet<{ sessions: ActiveLeaderSession[] }>('/api/sessions?status=active', token);
+      if (res.ok) setActiveSessions((res.data.sessions ?? []).filter(s => s.status === 'active'));
+    } catch { /* ignore */ }
+  }, [token, isLeader, user?.role]);
+
+  const endLeaderSession = async (sessionId: number) => {
+    if (!token) return;
+    try {
+      await apiPost(`/api/sessions/${sessionId}/end`, {}, token);
+      setActiveSessions(prev => prev.filter(s => s.id !== sessionId));
+    } catch { /* ignore */ }
+  };
 
   const fetchDashboard = useCallback(async () => {
     if (!token) return;
@@ -72,15 +97,16 @@ export default function DashboardScreen() {
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchDashboard(), refetch()]);
+    await Promise.all([fetchDashboard(), refetch(), fetchActiveSessions()]);
     setRefreshing(false);
-  }, [fetchDashboard, refetch]);
+  }, [fetchDashboard, refetch, fetchActiveSessions]);
 
   useFocusEffect(
     useCallback(() => {
       fetchDashboard();
       refetch();
-    }, [fetchDashboard, refetch])
+      fetchActiveSessions();
+    }, [fetchDashboard, refetch, fetchActiveSessions])
   );
 
   useEffect(() => { fetchDashboard(); }, [isCheckedIn]);
@@ -275,6 +301,28 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {activeSessions.length > 0 && (
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 8 }}>Sesiuni active</Text>
+          {activeSessions.map(s => (
+            <View key={s.id} style={[styles.activeSessionCard, s.type === 'check_in' ? { backgroundColor: '#D4EDDA' } : { backgroundColor: '#F8D7DA' }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>{s.type === 'check_in' ? 'Check-in' : 'Check-out'} #{s.id}</Text>
+                <Text style={{ fontSize: 13, color: '#666' }}>{s.employee_count} angajați</Text>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: '#DC3545', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12 }}
+                onPress={() => endLeaderSession(s.id)}
+                accessibilityLabel={`End session ${s.id}`}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Închide</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
       {isCheckedIn && dashboard?.leader && user?.role !== 'leader' && user?.role !== 'admin' && (
         <View style={styles.leaderCard}>
           <Text style={styles.leaderTitle}>{t('dashboard.yourLeader')}</Text>
@@ -381,6 +429,7 @@ const styles = StyleSheet.create({
   checkedInCountCard: { backgroundColor: '#E8F4FD', borderRadius: 8, padding: 16, marginBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   checkedInCountLabel: { fontSize: 15, color: '#333', fontWeight: '500' },
   checkedInCountValue: { fontSize: 24, fontWeight: 'bold', color: '#007AFF' },
+  activeSessionCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 8, padding: 14, marginBottom: 8 },
   leaderCard: { backgroundColor: '#FFF8E1', borderRadius: 8, padding: 16, marginBottom: 16 },
   leaderTitle: { fontSize: 13, color: '#666', marginBottom: 4 },
   leaderNameAdmin: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 },
